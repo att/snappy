@@ -1,0 +1,14 @@
+*.class
+*.dll
+*.exe
+*.o
+*.so
+*.a
+.*.swp
+.clang_complete
+cscope.out
+cscope.in.out
+cscope.po.out
+tags
+a.out
+TODO

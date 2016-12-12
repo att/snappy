@@ -1,0 +1,70 @@
+#!/bin/bash
+#
+# Copyright (c) 2016 AT&T Labs Research
+# All rights reservered.
+#
+# Licensed under the GNU Lesser General Public License, version 2.1; you may
+# not use this file except in compliance with the License. You may obtain a
+# copy of the License at:
+#
+# https://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+# License for the specific language governing permissions and limitations
+# under the License.
+#
+#
+# Author: Pingkai Liu (pingkai@research.att.com)
+#
+
+
+
+
+
+echo "swift plugin started." >> meta/log
+
+plugin_bin_dir=$(dirname `readlink -f $0`)
+
+json_cmd="$plugin_bin_dir/json"
+
+function exit_handler {
+    local status=$?
+    echo -n $status > meta/status
+    if [ $status == "0" ]; then
+        echo -n "Success" > meta/status_msg
+    else 
+        echo -n "Error" > meta/status_msg
+    fi
+   
+}
+
+trap exit_handler EXIT
+
+set -e
+cmd=$(echo -n `cat meta/cmd`)
+auth_url=$($json_cmd -f meta/arg string .tp_param.url)
+user=$($json_cmd -f meta/arg string .tp_param.user)
+passwd=$($json_cmd -f meta/arg string .tp_param.password)
+tenant=$($json_cmd -f meta/arg string .tp_param.project)
+
+
+echo "execute command: $cmd" >> meta/log
+
+swift_cmd="swift -q --os-auth-url=$auth_url --os-username=$user --os-password=$passwd --os-tenant-name=$tenant --os-region-name=RegionOne"
+
+
+if [ $cmd == "put" ]; 
+then
+    start_time=`date +%s`
+    $swift_cmd upload --object-name='' snappy data
+    fin_time=`date +%s`
+    $json_cmd -f meta/arg setnumber $start_time .tp_param.put_start setnumber $fin_time .tp_param.put_fin puts > meta/arg.out
+
+elif [ $cmd == "get" ];
+then
+    for key in `cat meta/key_list`; do
+        $swift download -D ./data $key
+    done
+fi
