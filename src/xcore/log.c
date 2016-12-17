@@ -264,11 +264,49 @@ close_js:
 
 
 
+int log_get_val_by_path(const char *log_buf, int log_buf_size, 
+                        const char *path, 
+                        void* val, int val_size) {
 
-int log_add_rec_2(char *log_buf, int log_buf_size, log_rec_t *rec) {
+    if (!log_buf || !path || !val)
+        return -EINVAL;
+
+    int i;
+    int status = 0; 
+    struct jsonxs xs;
+    struct json *js = json_open(JSON_F_NONE, &status);                         
     
-    return 0;
+    if (!js) 
+        return -status; 
+
+    int rc = json_loadstring(js, log_buf);                                                      
+    if (rc) {
+        status = rc;
+        goto close_js; 
+    }
+    if (!json_exists(js, path)) {
+        status = SNPY_ELOG;
+        goto close_js;
+    }
+
+    if (json_type(js, path) == JSON_T_STRING) {
+        strlcpy(val, json_string(js, path), val_size);
+    } else if (json_type(js,path) == JSON_T_NUMBER) {
+        if (val_size == 8) 
+            *(double *)val = json_number(js, path);
+        else  
+            status = EINVAL;
+    } else {
+        status = SNPY_ELOG;
+    }
+
+ close_js: 
+    if (status) 
+        printf("%d: %s\n", status, json_strerror(status));
+    json_close(js);                                                                           
+    return -status;   
 }
+
 
 #if TEST_MAIN
 

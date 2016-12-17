@@ -181,7 +181,7 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
         if (rc) {
             new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                                 SNPY_SCHED_STATE_DONE);
-            status = SNPY_EPROC;
+            status = SNPY_ESPAWNJ;
             goto change_state;
         } else {
             new_state = SNPY_UPDATE_SCHED_STATE(job->state, 
@@ -202,7 +202,7 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
         return rc;
 
     if (!snap_done)
-        return 0;
+        return -EBUSY;
     /* snapshot job is done */
     if (snap_result) {  /* snapshot sub job error */
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
@@ -212,10 +212,16 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
 
     }
     if ((snap_job_next == 0)) { /* no export job yet */
-        add_job_export(db_conn, job);
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+        rc = add_job_export(db_conn, job);
+        if (rc) {
+            new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                                SNPY_SCHED_STATE_DONE);
+            status = SNPY_ENEXT;
+        } else {
+            new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_BLOCKED);
-        status = 0;
+            status = 0;
+        }
         goto change_state;
     }
 
@@ -228,7 +234,7 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
     if (rc)
         return rc;
     if (!export_done) /* export running */
-        return 0;
+        return -EBUSY;
     /* export job is done */
     if(export_result) {     /* error */
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,

@@ -53,4 +53,7 @@ int log_msg_add_errmsg(char *msg_buf, int msg_buf_size, int status);
 int log_add_rec_va(char *log_buf, int log_buf_size, log_rec_t *rec, 
                    const char *msg_val_fmt, va_list ap);
 
+int log_get_val_by_path(const char *log_buf, int log_buf_size, 
+                        const char *path, 
+                        void* val, int val_size) ;
 #endif

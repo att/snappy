@@ -411,7 +411,7 @@ static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
                                   job->id, job->argv[0],
                                   job->state, new_state,
                                   status,
-                                  msg, sizeof msg);
+                                  NULL);
 }
 
 /* 

@@ -23,14 +23,11 @@
 
 #include "dictionary.h"
 
-#define SNPY_EC_SIZE 4096
 #define SNPY_LOG_SIZE 4096
-
 
 #define SNPY_MAX_ARGS 8
 
 
-#
 typedef struct snpy_job {
     int id;
     int sub;
@@ -114,6 +111,7 @@ enum snpy_error {
     SNPY_EAMBIPLUG,
     SNPY_ENOPLUG,
     SNPY_EINCOMPARG,
+    SNPY_ELOG,
     SNPY_ELAST
 };
 

@@ -241,10 +241,12 @@ static int do_snap(const char *arg, int arg_size) {
         status = -rc;
         goto err_out;
     }
+
     if((rc = rbd_data_init(&conf, &rbd))) {
         status = -rc;
         goto err_out;
     }                                           /* allocation point: rbd */
+
     char job_id[32];
     if ((rc = kv_get_val("meta/id", job_id, sizeof job_id))) {
         status = -rc;
@@ -575,18 +577,21 @@ int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) {
 
     if (rados_create(&rbd->cluster, conf->user)) 
         goto err_out;
-
+    printf("1\n");
     if (rados_conf_set(rbd->cluster, "mon_host", conf->mon_host) ||
         rados_conf_set(rbd->cluster, "key", conf->key))
         goto free_rados_cluster;
+    printf("1\n");
     if (rados_connect(rbd->cluster)) 
         goto free_rados_cluster;
     if (rados_ioctx_create(rbd->cluster, conf->pool, &rbd->io_ctx)) 
         goto free_rados_cluster;
+    printf("1\n");
     if ((rc = rbd_open(rbd->io_ctx, conf->image, &rbd->image, NULL))) {
         printf("%s\n", strerror(-rc));
         goto free_rados_ioctx;
     }
+    printf("1\n");
     return 0;
 
 free_rados_ioctx:

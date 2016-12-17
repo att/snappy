@@ -24,9 +24,10 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-void *mempcpy (void *dest, const void *src, size_t n);
+//void *mempcpy (void *dest, const void *src, size_t n);
 
-//int jsmn_strcmp(const char *s, int size, const char *js, jsmntok_t *tok);
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 /**
  * BUILD_ASSERT - assert a build-time dependency.

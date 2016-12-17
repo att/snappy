@@ -19,6 +19,10 @@ HEADERS = $(wildcard *.h)
 $(TARGET): $(OBJECTS)
 	    $(CC) $(LDFLAGS) $(OBJECTS)  -Wall $(LIBS) -o $@
 
+install: 
+	install -s -m 0755 $(TARGET) /var/lib/snappy/bin/
+	
+
 clean:
 	    rm -f *.o
 	    rm -f $(TARGET)

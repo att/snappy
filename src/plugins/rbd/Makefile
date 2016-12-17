@@ -1,10 +1,10 @@
 TARGET = snpy_rbd
 
 #gcc -O2  -static -I/opt/ceph/usr/include -I/opt/boost/usr/include -L./libs snpy_rbd.c json.c util.c -lmysqlclient -lrados -lrbd -lboost_system -lboost_thread -lcrypto++  -lstdc++   -lpthread -lm -ldl
-LIBS = -lmysqlclient -lrados -lrbd -lboost_system -lboost_thread -lcrypto++  -lstdc++   -lpthread -lm -ldl
+LIBS = -Wl,-Bstatic -lmysqlclient -lrados -lrbd -lboost_system -lboost_thread -lcrypto++  -lstdc++  -Wl,-Bdynamic  -lpthread -lm -ldl
 #LIBS = -lrados -lrbd -lboost_system -lboost_thread -lcryptopp -lstdc++ -lpthread -lm -ldl
 CC = gcc
-CFLAGS = -g -static -Wall -Wno-unused-variable -Wno-unused-function  -I/opt/ceph/usr/include
+CFLAGS = -g -Wall -Wno-unused-variable -Wno-unused-function  -I/opt/ceph/usr/include
 LDFLAGS = -L./libs
 
 .PHONY: default all clean

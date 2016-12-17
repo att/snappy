@@ -343,7 +343,7 @@ change_state:
                                   job->id, job->argv[0],
                                   job->state, new_state,
                                   status,
-                                  msg, sizeof msg);
+                                  NULL);
 }
 
 /*
