@@ -18,7 +18,6 @@
  *  Author: Pingkai Liu (pingkai@research.att.com)
  */
 
-#include <rbd/librbd.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -33,8 +32,14 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+
+#include <rbd/librbd.h>
+
+
+
 #include "json.h"
-#include "util.h"
+#include "snpy_util.h"
+#include "snpy_blk_map.h"
 
 struct rbd_data {
     rados_t cluster;
@@ -42,7 +47,6 @@ struct rbd_data {
     rbd_image_t image;
     rbd_image_info_t info;
 }; 
-
 
 #define RBD_CONF_SIZE 256
 
@@ -55,32 +59,11 @@ struct rbd_conf {
     char snap[RBD_CONF_SIZE];
 };
 
-struct seg {
-    u64 offset;
-    u64 len;
+struct rbd_hdr {
+    u64 blk_dev_size;
+    u64 blk_map_offset;
+    u64 compress_type;
 };
-
-struct data_tag {
-    union {
-        struct {
-            u32 job_id;
-            u64 time;
-            u64 size;
-        };
-        u8 hdr[256];
-    };
-    /* rbd specific */
-    union {
-        struct {
-            u32 segc;
-            struct seg segv[239];
-        };
-        u8 rbd[4096-256];
-    };
-};
-
-
-
 
 const char* snpy_rbd_strerror(int e) {
 
@@ -91,9 +74,10 @@ int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) ;
 static int diff_cb_snap(uint64_t off, size_t len, int exists, void *arg);
 void rbd_data_destroy(struct rbd_data *rbd) ;
 
+#if 0
 static int kv_get_val(const char *key, char *val, int val_size);
 static int kv_put_val(const char *key, const char *val, int val_size);
-
+#endif
 static int do_snap(const char *arg, int arg_size);
 static int do_export(const char *arg, int arg_size);
 static int do_import(const char *arg, int arg_size);
@@ -113,6 +97,7 @@ struct diff_cb_export_arg {
     rbd_image_t image;
     char *buf;
     struct data_tag *tag;
+    struct blk_map *bm;
     int status;
 };
 
@@ -125,22 +110,7 @@ static int diff_cb_export(uint64_t off, size_t len, int exists, void *arg) {
     }
     if (exists) {
         /* update the segment list */
-        int segc = p->tag->segc; 
-        int last = segc - 1;
-        struct seg *segv = p->tag->segv;
-        if (segc == 0) {
-            segv[0].offset = off;
-            segv[0].len = len;
-            p->tag->segc ++;
-        } else if (segv[last].offset + segv[last].len == off) {
-            segv[last].len += len;
-        } else {
-            if (last + 1 >= ARRAY_SIZE(p->tag->segv)) 
-                return -ERANGE;
-            segv[last+1].offset = off;
-            segv[last+1].len = len;
-            p->tag->segc ++;
-        }
+        blk_map_add(p->bm, off, len);
         /* write to data file */
         ssize_t nbyte;
         nbyte = rbd_read(p->image, off, len, p->buf);
@@ -155,52 +125,6 @@ static int diff_cb_export(uint64_t off, size_t len, int exists, void *arg) {
         }
     }
     return 0;
-}
-
-int kv_get_val(const char *key, char *val, int val_size) {
-    int fd;
-    int status = 0;
-    struct stat sb;
-
-    if ((fd = open(key, O_RDONLY)) == -1) 
-        return -errno;
-    if (fstat(fd, &sb)) {
-        status = errno;
-        goto close_fd;
-    }
-    if (sb.st_size >= val_size) {
-        status = ERANGE;
-        goto close_fd;
-    }
-
-    int nbyte = read(fd, val, sb.st_size); 
-    if (nbyte != sb.st_size) {
-        status = errno;
-        goto close_fd;
-    }
-    val[nbyte] = 0;
-//    char *p; (p = strchr(val, '\n')) &&  (*p = 0);
-    return 0;  
-
-close_fd:
-    close(fd);
-    return -status;
-}
-
-int kv_put_val(const char *key, const char *val, int val_size) {
-    int val_len = strnlen(val, val_size);
-    int fd;
-    if (val_len >= val_size)
-        goto err_out;
-    if ((fd = open(key, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0)
-        goto err_out;
-    if (write(fd, val, val_len) != val_len)
-        goto close_fd;
-    return 0;
-close_fd:
-        close(fd);
-err_out:
-        return 1;
 }
 
 int rbd_conf_init(struct rbd_conf *conf, const char *arg) {
@@ -227,8 +151,6 @@ close_js:
     return rc;
 }
 
-
-
 static int do_snap(const char *arg, int arg_size) {
     int rc;
     struct rbd_data rbd;
@@ -248,7 +170,7 @@ static int do_snap(const char *arg, int arg_size) {
     }                                           /* allocation point: rbd */
 
     char job_id[32];
-    if ((rc = kv_get_val("meta/id", job_id, sizeof job_id))) {
+    if ((rc = kv_get_val("meta/id", job_id, sizeof job_id, NULL))) {
         status = -rc;
         goto cleanup_rbd_data;
     }
@@ -323,9 +245,9 @@ cleanup_rbd_data:
 err_out:
 
     sprintf(str_buf, "%d", status);
-    rc = kv_put_val("meta/status", str_buf,sizeof str_buf); 
+    rc = kv_put_val("meta/status", str_buf, sizeof str_buf, NULL); 
     status_msg = snpy_rbd_strerror(status);
-    rc = kv_put_val("meta/status_msg", status_msg, strlen(status_msg)+1);
+    rc = kv_put_val("meta/status_msg", status_msg, strlen(status_msg)+1, NULL);
 
     return rc;
 }
@@ -379,6 +301,8 @@ err_out:
 
 
 static int do_export(const char *arg, int arg_size) {
+
+#if 1
     int rc;
     struct rbd_data rbd;
     struct rbd_conf conf;
@@ -397,7 +321,7 @@ static int do_export(const char *arg, int arg_size) {
         goto err_out;
     }
     char job_id[32];
-    if (kv_get_val("meta/id", job_id, sizeof job_id)) {
+    if (kv_get_val("meta/id", job_id, sizeof job_id, NULL)) {
         status = -rc;
         goto cleanup_rbd_data;
     }
@@ -411,7 +335,7 @@ static int do_export(const char *arg, int arg_size) {
         goto cleanup_rbd_data;
     }
     char data_fn[PATH_MAX]="data/";
-    int data_fd = open(strncat(data_fn, job_id, ARRAY_SIZE(data_fn)), 
+    int data_fd = open(strlcat(data_fn, job_id, ARRAY_SIZE(data_fn)),
                        O_WRONLY|O_CREAT|O_TRUNC, 0600);
     if (data_fd == -1) {
         status = errno;
@@ -424,6 +348,7 @@ static int do_export(const char *arg, int arg_size) {
         .segc = 0,
         .segv = {{0}}
     };
+
     struct diff_cb_export_arg export_arg =
     {   .image = rbd.image,
         .fd = data_fd,
@@ -431,6 +356,7 @@ static int do_export(const char *arg, int arg_size) {
         .tag = &tag,
         .status = 0
     };
+
     rc = rbd_snap_set(rbd.image, conf.snap);
     if (rc) {
         status = -rc;
@@ -468,11 +394,13 @@ err_out:
     kv_put_val("meta/status_msg", str_buf, sizeof str_buf);
 
     return -status;
+#endif
 
 }
 
 
 static int do_import(const char *arg, int arg_size) {
+#if 0
     int rc;
     struct rbd_data rbd;
     struct rbd_conf conf;
@@ -491,7 +419,7 @@ static int do_import(const char *arg, int arg_size) {
         goto err_out;
     }
     char job_id[32];
-    if (kv_get_val("meta/id", job_id, sizeof job_id)) {
+    if (kv_get_val("meta/id", job_id, sizeof job_id, NULL)) {
         status = -rc;
         goto cleanup_rbd_data;
     }
@@ -558,7 +486,7 @@ err_out:
 
     return -status;
 
-
+#endif
     return 0;
 }
 
@@ -577,21 +505,17 @@ int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) {
 
     if (rados_create(&rbd->cluster, conf->user)) 
         goto err_out;
-    printf("1\n");
     if (rados_conf_set(rbd->cluster, "mon_host", conf->mon_host) ||
         rados_conf_set(rbd->cluster, "key", conf->key))
         goto free_rados_cluster;
-    printf("1\n");
     if (rados_connect(rbd->cluster)) 
         goto free_rados_cluster;
     if (rados_ioctx_create(rbd->cluster, conf->pool, &rbd->io_ctx)) 
         goto free_rados_cluster;
-    printf("1\n");
     if ((rc = rbd_open(rbd->io_ctx, conf->image, &rbd->image, NULL))) {
         printf("%s\n", strerror(-rc));
         goto free_rados_ioctx;
     }
-    printf("1\n");
     return 0;
 
 free_rados_ioctx:
@@ -618,13 +542,13 @@ int main(void) {
     char arg[4096];
     char id_buf[64];
     int job_id;
-    if (kv_get_val("meta/cmd", cmd, sizeof cmd)) 
+    if (kv_get_val("meta/cmd", cmd, sizeof cmd, NULL)) 
         goto err_out;
-    if (kv_get_val("meta/id", id_buf, sizeof id_buf))
+    if (kv_get_val("meta/id", id_buf, sizeof id_buf, NULL))
         goto err_out;
     job_id = atoi(id_buf);
 
-    if (kv_get_val("meta/arg", arg, sizeof arg))
+    if (kv_get_val("meta/arg", arg, sizeof arg, NULL))
         goto err_out;
     char buf[64];
     struct rbd_conf conf;

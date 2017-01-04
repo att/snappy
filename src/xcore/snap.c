@@ -36,7 +36,7 @@
 #include "arg.h"
 #include "log.h"
 #include "job.h"
-#include "util.h"
+#include "snpy_util.h"
 #include "error.h"
 #include "stringbuilder.h"
 #include "conf.h"
@@ -236,7 +236,6 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     if (get_wd_path(job->id, wd_path, sizeof wd_path)) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ;
-printf("1\n");
         goto change_state;
     }
 
@@ -244,7 +243,6 @@ printf("1\n");
                
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ; 
-printf("2\n");
         goto change_state;
     }
     rc = waitpid(pid, NULL,WNOHANG);
@@ -258,7 +256,6 @@ printf("2\n");
         (rc = kv_get_val("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
-printf("3\n");
         status = SNPY_EBADJ;
         goto change_state;
     }

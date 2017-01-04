@@ -21,7 +21,7 @@
 #include <errno.h>
 
 #include "conf.h"
-#include "util.h"
+#include "snpy_util.h"
 #include "snappy.h"
 
 

@@ -25,9 +25,8 @@
 #include <errno.h>
 
 #include "snappy.h"
-//#include "jsmn.h"
 #include "json.h"
-#include "util.h"
+#include "snpy_util.h"
 #include "error.h"
 
 

@@ -29,7 +29,7 @@
 #include "snappy.h"
 #include "job.h"
 #include "db.h"
-#include "util.h"
+#include "snpy_util.h"
 #include "log.h"
 
 snpy_job_t *snpy_job_alloc(int size) {

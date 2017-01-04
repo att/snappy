@@ -33,7 +33,7 @@
 #include "snappy.h"
 #include "ciniparser.h"
 #include "stringbuilder.h"
-#include "util.h"
+#include "snpy_util.h"
 
 
 #define PLUG_NAME_LEN 64

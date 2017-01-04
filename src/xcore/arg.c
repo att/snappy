@@ -25,7 +25,7 @@
 //#include "jsmn.h"
 
 #include "arg.h"
-#include "util.h"
+#include "snpy_util.h"
 
 
 #define MAX_TOKENS 1024

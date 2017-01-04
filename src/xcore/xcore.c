@@ -44,7 +44,7 @@
 #include "error.h"
 #include "db.h"
 #include "proc.h"
-#include "util.h"
+#include "snpy_util.h"
 #include "conf.h"
 #include "plugin.h"
 

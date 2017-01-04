@@ -29,7 +29,7 @@
 #include "arg.h"
 #include "log.h"
 #include "job.h"
-#include "util.h"
+#include "snpy_util.h"
 #include "json.h"
 
 #include "bk_single_sched.h"

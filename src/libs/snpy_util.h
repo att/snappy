@@ -20,18 +20,26 @@
 
 #ifndef SNAPPY_UTIL_H
 #define SNAPPY_UTIL_H 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
+#include <stddef.h>
 #include <stdint.h>
 
+/* short alias for integer types */
 typedef uint8_t u8;
 typedef int8_t s8;
 typedef uint32_t u32;
 typedef int32_t s32;
+typedef uint16_t u16;
+typedef int16_t s16;
 typedef uint64_t u64;
 typedef int64_t s64;
 
-void *mempcpy (void *dest, const void *src, size_t n);
 
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 /**
  * BUILD_ASSERT - assert a build-time dependency.
@@ -88,12 +96,16 @@ void *mempcpy (void *dest, const void *src, size_t n);
 #define _array_size_chk(arr) 0
 #endif
 
-#if 0
-int kv_get_val(const char *key, char *val, int val_size);
-int kv_put_val(const char *key, const char *val, int val_size);
-#endif
+int kv_get_val(const char *key, char *val, int val_size, const char *wd);
+int kv_get_ival(const char *key, int *val, const char *wd);
+int kv_put_val(const char *key, const char *val, int val_size, const char *wd);
+int kv_put_ival(const char *key, int val, const char *wd);
 
 size_t strlcat(char *dst, const char *src, size_t siz);
 size_t strlcpy(char *dst, const char *src, size_t siz);
+
+int rmdir_recurs(const char *dir);
+int mkdir_p(const char *dir_path, const mode_t mode) ;
+int mkdir_argv(const char *fmt, ...) ;
 #endif
 

@@ -29,9 +29,8 @@
 #include <fcntl.h>
 #include <fts.h>
 #include <unistd.h>
-//#include "jsmn.h"
 
-#include "util.h"
+#include "snpy_util.h"
 
 /* mempcpy() - same as GNU mempcpy function
 */
@@ -97,7 +96,7 @@ close_fd:
 
 
 int kv_get_ival(const char *key, int *val, const char *wd) {
-    char val_buf[32];
+    char val_buf[32]="";
     int rc;
     rc = kv_get_val(key, val_buf, sizeof val_buf, wd);
 
@@ -150,6 +149,7 @@ int kv_put_ival(const char *key, int val, const char *wd) {
 }
 
 
+#if !defined(HAVE_STRLCPY)
 /*
  * Appends src to string dst of size siz (unlike strncat, siz is the
  * full size of dst, not space left).  At most siz-1 characters
@@ -184,7 +184,9 @@ strlcat(char *dst, const char *src, size_t siz)
 
     return(dlen + (s - src));   /* count does not include NUL */
 }
+#endif
 
+#if !defined(HAVE_STRLCAT)
 /*
  * Copy src to string dst of size siz.  At most siz-1 characters
  * will be copied.  Always NUL terminates (unless siz == 0).
@@ -215,6 +217,7 @@ strlcpy(char *dst, const char *src, size_t siz)
 
     return(s - src - 1);    /* count does not include NUL */
 }
+#endif
 
 int rmdir_recurs(const char *dir)
 {

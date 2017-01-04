@@ -21,7 +21,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "util.h"
+#include "snpy_util.h"
 #include "error.h"
 #include "json.h"
 

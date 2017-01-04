@@ -31,7 +31,7 @@
 #include "arg.h"
 #include "log.h"
 #include "job.h"
-#include "util.h"
+#include "snpy_util.h"
 
 #include "bk_single_full.h"
 
