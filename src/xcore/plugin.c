@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
+#include <syslog.h>
 
 #include <limits.h>
 
@@ -70,9 +71,15 @@ int plugin_tbl_init(void) {
         const char *name =  ciniparser_getstring(info, ":name", "");
         if (!name)
             continue;
+        int id = ciniparser_getint(info, ":id", -1);
+        if (id == -1) 
+            continue;
+        
         plugin_tbl[i].info = info;
         plugin_tbl[i].name = name;
+        plugin_tbl[i].id = id;
         i++;
+        syslog(LOG_INFO, "load plugin: %d, %s.", id, name);
     }
     
     closedir(dir);
@@ -88,7 +95,7 @@ int plugin_tbl_deinit(void) {
     return 0;
 }
 
-struct plugin *plugin_srch(const char *name) {
+struct plugin *plugin_srch_by_name(const char *name) {
     int i;
     if (!name)
         return NULL;
@@ -98,6 +105,18 @@ struct plugin *plugin_srch(const char *name) {
     }
     return NULL;
 }
+
+struct plugin *plugin_srch_by_id(int id) {
+    int i;
+    if (id == -1)
+        return NULL;
+    for (i = 0; i < ARRAY_SIZE(plugin_tbl); i ++) {
+        if (plugin_tbl[i].id == id)
+            return &plugin_tbl[i];
+    }
+    return NULL;
+}
+
 
 const char *plugin_get_exec(struct plugin *pi) {
     if (!pi || !pi->info) 

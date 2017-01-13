@@ -6,7 +6,6 @@
 
 #include "snpy_util.h"
 
-
 /*
  * The snappy backup data are sent to target in the form of packets.
  * 
@@ -42,7 +41,7 @@ struct snpy_data_tag {
     u8 pkt_chksum[16];          /* checksum for current packet */       
     u32 chk_nday;               /* days of last check since snapshot */
     u32 pkt_chk_nday;           /* time diff between last check and snapshot */
-    u8  extra_data[0];
+    u8  extra_data[4000];       /* fill to 4096 */
 };
 
 void snpy_data_tag_init(struct snpy_data_tag *buf);

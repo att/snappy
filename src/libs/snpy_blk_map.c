@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <unistd.h>
 #include <errno.h>
 
 #include "snpy_blk_map.h"
@@ -49,7 +50,51 @@ int blk_map_add(struct blk_map *bm, u64 off, u64 len) {
    return 0;
 }
 
+
+/* blk_map_write() - write block map to a give fd
+ *
+ * Note: it will change the offset of the @fd
+ */
+
+int blk_map_write(int fd, struct blk_map *bm) {
+    if (!bm)
+        return -EINVAL;
+
+    size_t size = (sizeof bm->nuse) + bm->nuse * (sizeof bm->segv[0]);
+    ssize_t nwrite = write(fd, &(bm->nuse), size);
+    if (nwrite != size) 
+        return -errno;
+
+    return 0;
+}
+
+int blk_map_read(int fd, struct blk_map **bm) {
+    if (!bm) 
+        return -EINVAL;
+
+    u64 nseg = 0;
+    if (read(fd, &nseg, sizeof nseg) != sizeof nseg) 
+        return -errno;
+
+    struct blk_map *p = blk_map_alloc(nseg);
+    if (!p) 
+        return -ENOMEM;
+    p->nuse = nseg;
+    size_t size = nseg * (sizeof p->segv[0]);
+    ssize_t nread = read(fd, p->segv, size);
+    if (nread != size) {
+        blk_map_free(p);
+        return -errno;
+    }
+    *bm = p;
+    return 0;
+
+}
+
+
 void blk_map_free(struct blk_map *bm) {
     free(bm);
     return;
 }
+
+

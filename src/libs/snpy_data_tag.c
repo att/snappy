@@ -9,6 +9,7 @@ void snpy_data_tag_init(struct snpy_data_tag *buf) {
     memset(buf, 0, SNPY_DATA_TAG_SIZE);
     buf->magic = SNPY_DATA_TAG_MAGIC;
 
+    
     return;
 
 }

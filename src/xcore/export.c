@@ -30,20 +30,21 @@
 #include <syslog.h>
 #include <unistd.h>
 
+#include "stringbuilder.h"
+#include "ciniparser.h"
+#include "json.h"
+#include "snpy_util.h"
+#include "snpy_data_tag.h" 
+
 
 #include "snappy.h"
 #include "db.h"
 #include "arg.h"
 #include "log.h"
 #include "job.h"
-#include "snpy_util.h"
 #include "error.h"
 #include "conf.h"
 #include "plugin.h"
-
-#include "stringbuilder.h"
-#include "ciniparser.h"
-#include "json.h"
 
 #include "export.h"
 
@@ -59,8 +60,8 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
 static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
 
-static int export(snpy_job_t *job) ;
 
+static int plugin_chooser(snpy_job_t *job, struct plugin **pi); 
 static int plugin_env_init(struct plugin_env *env, snpy_job_t *job);
 
 static int job_get_wd(int job_id, char *wd, int wd_size);
@@ -80,7 +81,7 @@ static int job_get_wd(int job_id, char *wd, int wd_size) {
  *
  */
 
-int plugin_chooser(snpy_job_t *job, struct plugin **pi) {
+static int plugin_chooser(snpy_job_t *job, struct plugin **pi) {
     int status = 0;
     if (!job || !pi) 
         return -EINVAL;
@@ -98,7 +99,7 @@ int plugin_chooser(snpy_job_t *job, struct plugin **pi) {
         status = SNPY_EINCOMPARG;
         goto close_js;
     }
-    *pi = plugin_srch(pi_name);
+    *pi = plugin_srch_by_name(pi_name);
     if (!(*pi)) {
         status = SNPY_ENOPLUG;
         goto close_js;
@@ -127,6 +128,29 @@ static int job_get_plugin_exec(snpy_job_t *job,
 }
 
 
+static int get_src_plug_id(const char *arg) {
+    /*TODO */
+    return 0;
+}
+static int get_tgt_plug_id(const char *arg) {
+
+    /*TODO */
+    return 0;
+}
+static int get_src_plug_ver(const char *arg) {
+
+    /*TODO */
+    return 0;
+}
+static int get_tgt_plug_ver(const char *arg) {
+
+    /*TODO */
+    return 0;
+}
+
+static int get_snap_ts(const char *buf) {
+    return 0;
+}
 
 static int export_env_init(snpy_job_t *job) {
     int rc;
@@ -161,17 +185,35 @@ static int export_env_init(snpy_job_t *job) {
     }
 
     /* setup cmd */
-    if ((rc = kv_put_val("meta/cmd", job->argv[0], job->argv_size[0], wd))) {
+    if ((rc = kv_put_sval("meta/cmd", job->argv[0], job->argv_size[0], wd))) {
         status = -rc;
         goto free_wd_fd;
     }
 
     /* setup arg */
-    if ((rc = kv_put_val("meta/arg", job->argv[2], job->argv_size[2], wd))) {
+    if ((rc = kv_put_sval("meta/arg", job->argv[2], job->argv_size[2], wd))) {
         status = -rc;
         goto free_wd_fd;
     }
+    
+    /* setup snpy data tag */
 
+    struct snpy_data_tag tag = 
+    {   
+        .magic = SNPY_DATA_TAG_MAGIC,
+        .dep_id = job->id,
+        .job_id = job->id,
+        .frag_id = job->id,
+        .snap_ts = get_snap_ts(job->argv[2]),
+        .src_plugin_id = get_src_plug_id(job->argv[2]),
+        .src_plugin_ver = get_src_plug_ver(job->argv[2]),
+        .tgt_plugin_id = get_tgt_plug_id(job->argv[2]),
+        .tgt_plugin_ver = get_tgt_plug_ver(job->argv[2])
+    };
+    if ((rc =  kv_put_bval("meta/tag", &tag, sizeof tag, wd))) {
+        status = -rc;
+        goto free_wd_fd;
+    }
 free_wd_fd:
     close(wd_fd);
     return -status;;
@@ -318,20 +360,20 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     log_rec_t log_rec;
 
     char wd_path[PATH_MAX]="";
-    char msg[SNPY_LOG_MSG_SIZE]="";
+    char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
 
     if (job_get_wd(job->id, wd_path, sizeof wd_path)) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ; 
-        log_msg_add_errmsg(msg, sizeof msg, status);
         goto change_state;
     }
 
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
                
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-        status = SNPY_EBADJ; 
-        log_msg_add_errmsg(msg, sizeof msg, status);
+        status = SNPY_EBADJ;
+        snprintf(ext_err_msg, sizeof ext_err_msg,
+                 "get plugin pid error, code: %d.", rc);
         goto change_state;
     }
 
@@ -343,18 +385,20 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     char arg_out[4096];
     
     if ((rc = kv_get_ival("meta/status", &status, wd_path)) ||
-        (rc = kv_get_val("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
+        (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ;
-        log_msg_add_errmsg(msg, sizeof msg, status);
+
+        snprintf(ext_err_msg, sizeof ext_err_msg,
+                 "error getting meta/status or arg.out, code: %d.", rc);
         goto change_state;
     }
+
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EDBCONN;
-        log_msg_add_errmsg(msg, sizeof msg, status);
         goto change_state;
     }
 
@@ -364,7 +408,6 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EPROC;
-        log_msg_add_errmsg(msg, sizeof msg, status);
         goto change_state;
     }
     new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_ZOMBIE);
@@ -375,7 +418,7 @@ change_state:
                                   job->id, job->argv[0],
                                   job->state, new_state,
                                   status,
-                                  NULL);
+                                  "s", "ext_err_msg", ext_err_msg);
 }
 
 /*

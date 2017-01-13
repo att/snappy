@@ -25,12 +25,15 @@
 #include <errno.h>
 #include <limits.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <fcntl.h>
 #include <fts.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "snpy_util.h"
+#include "json.h"
 
 /* mempcpy() - same as GNU mempcpy function
 */
@@ -55,7 +58,7 @@ int jsmn_strcmp(const char *s, int size,
     return 1;
 }
 */
-int kv_get_val(const char *key, char *val, int val_size, const char *wd) 
+int kv_get_sval(const char *key, char *val, int val_size, const char *wd) 
 {
     int fd;
     int status = 0;
@@ -66,7 +69,7 @@ int kv_get_val(const char *key, char *val, int val_size, const char *wd)
         strncpy(key_path, key, sizeof key_path);
     } else if (wd && 
         snprintf(key_path, sizeof key_path, "%s/%s", wd, key) >= sizeof key_path) {
-        return -ERANGE;
+        return -ENAMETOOLONG;
     }
 
     if ((fd = open(key_path, O_RDONLY)) == -1)
@@ -80,13 +83,12 @@ int kv_get_val(const char *key, char *val, int val_size, const char *wd)
         goto close_fd;
     }
 
-    int nbyte = read(fd, val, sb.st_size); 
+    int nbyte = read(fd, val, sb.st_size);
     if (nbyte != sb.st_size) {
         status = errno;
         goto close_fd;
     }
     val[nbyte] = 0;
-    char *p; (p = strchr(val, '\n')) &&  (*p = 0);
     return 0;
 
 close_fd:
@@ -98,7 +100,7 @@ close_fd:
 int kv_get_ival(const char *key, int *val, const char *wd) {
     char val_buf[32]="";
     int rc;
-    rc = kv_get_val(key, val_buf, sizeof val_buf, wd);
+    rc = kv_get_sval(key, val_buf, sizeof val_buf, wd);
 
     if (rc) 
         return rc;
@@ -116,36 +118,84 @@ int kv_get_ival(const char *key, int *val, const char *wd) {
     return 0;
 }
 
-int kv_put_val(const char *key, const char *val, int val_size, const char *wd) 
+int kv_put_sval(const char *key, const char *val, int val_size, const char *wd) 
 {
+    int status = 0;
     int val_len = strnlen(val, val_size);
     int fd;
     char key_path[PATH_MAX] = "";
+
+    if (!key || !val) 
+        return -EINVAL;
+
     if (!wd) {
         strncpy(key_path, key, sizeof key_path);
     } else if (wd && 
-        snprintf(key_path, sizeof key_path, "%s/%s", wd, key) >= sizeof key_path) {
-        return -ERANGE;
+        snprintf(key_path, sizeof key_path, "%s/%s", wd, key) 
+        >= sizeof key_path) {
+        return -ENAMETOOLONG;
     }
     
-
-    if (val_len >= val_size)
+    if (val_len >= val_size) {
+        status = ERANGE;
         goto err_out;
-    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0)
+    }
+    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0) {
+        status = errno;
         goto err_out;
-    if (write(fd, val, val_len) != val_len)
+    }
+    if (write(fd, val, val_len) != val_len) {
+        status = errno;
         goto close_fd;
+    }
+        
     return 0;
 close_fd:
         close(fd);
 err_out:
-        return 1;
+        return -status;
 }
+
+int kv_put_bval(const char *key, 
+                const void *val, int val_size, 
+                const char *wd) 
+{
+    int status = 0;
+    int fd;
+    char key_path[PATH_MAX] = ""; 
+
+    if (!key || !val) 
+        return -EINVAL;
+
+    if (!wd) {
+        strncpy(key_path, key, sizeof key_path);
+    } else if (wd && 
+               snprintf(key_path, sizeof key_path, "%s/%s", wd, key) 
+               >= sizeof key_path) {
+        return -ENAMETOOLONG;
+    }
+    
+    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0) {
+        status = errno;
+        goto err_out;
+    }
+    if (write(fd, val, val_size) != val_size) {
+        status = errno;
+        goto close_fd;
+    }
+    return 0;
+close_fd:
+        close(fd);
+err_out:
+        return -status;
+}
+
+
 
 int kv_put_ival(const char *key, int val, const char *wd) {
     char val_buf[32] = "";
     snprintf(val_buf, sizeof val_buf, "%d", val);
-    return kv_put_val(key, val_buf, sizeof val_buf, wd);
+    return kv_put_sval(key, val_buf, sizeof val_buf, wd);
 }
 
 
@@ -351,3 +401,108 @@ int mkdir_argv(const char *fmt, ...) {
 }
 
 
+
+int snpy_get_json_val(const char *buf, int buf_size,
+                      const char *path,
+                      void *val, int val_size) {
+    if (!buf || !path || !val)
+        return -EINVAL;
+
+    int i;
+    int status = 0;
+    struct jsonxs xs;
+    struct json *js = json_open(JSON_F_NONE, &status);
+
+    if (!js)
+        return -status;
+
+    int rc = json_loadstring(js, buf);
+    if (rc) {
+        status = rc;
+        goto close_js;
+    }
+
+    if (!json_exists(js, path)) {
+        status = EINVAL;
+        goto close_js;
+    }
+
+    if (json_type(js, path) == JSON_T_STRING) {
+        strlcpy(val, json_string(js, path), val_size);
+    } else if (json_type(js,path) == JSON_T_NUMBER) {
+        if (val_size == sizeof(double))
+            *(double *)val = json_number(js, path);
+        else
+            status = EINVAL;
+    } else {
+        status = EINVAL;
+    }
+
+ close_js:
+    json_close(js);
+    return -status;
+    
+}
+
+static const char *snpy_logger_pri_strlist[] = 
+{
+    "NONE",
+    "INFO",
+    "WARN",
+    "DEBUG",
+    "ERROR",
+    "FATAL",
+    "PANIC"
+};
+
+
+struct snpy_logger {
+    int fd;
+    pthread_mutex_t lock;
+};
+
+static struct snpy_logger logger = 
+{   
+    .fd = 1,
+    .lock = PTHREAD_MUTEX_INITIALIZER,
+};
+
+int snpy_logger_open(const char *log_fn, int flag) {
+    int fd = open(log_fn, O_CREAT|O_WRONLY|O_TRUNC, 0600);
+    if (fd < 0) 
+        return errno;
+    logger.fd = fd;
+    return 0;
+}
+
+int snpy_logger(int priority, const char *fmt, ...) {
+
+    char buf[4096]="";
+    if (priority < SNPY_LOG_NONE || priority > SNPY_LOG_PANIC)
+        return -EINVAL;
+    
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int len = snprintf(buf, sizeof buf,
+                       "[%lld.%lld] %s ", 
+                       (long long)tv.tv_sec, (long long)tv.tv_usec, 
+                       snpy_logger_pri_strlist[priority]);
+    va_list ap;
+
+    va_start(ap, fmt);
+
+    int rc = vsnprintf (buf+len, sizeof buf - len - 1, fmt, ap);
+    if (rc >= (sizeof buf) - len)
+        return -EMSGSIZE;
+    va_end(ap);
+
+    len += rc;
+    buf[len] = '\n'; len++; buf[len] = 0;
+
+    write(logger.fd, buf, len);
+    return 0;
+}
+
+void snpy_logger_close(int flag) {
+    close(logger.fd);
+}

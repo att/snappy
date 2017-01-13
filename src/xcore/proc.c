@@ -32,13 +32,14 @@ static proc_tab_entry_t proc_tab[128] = {
     { "bk_single_sched", bk_single_sched_proc },
     { "bk_single_full", bk_single_full_proc },
 //    { "bk_single_incr", bk_single_incr_proc },
-//    { "rstr_single_full", rstr_single_full_proc},
+    { "rstr_single", rstr_single_proc},
     { "snap", snap_proc},
     { "export", export_proc},
+    { "import", import_proc},
 //    { "diff", diff_proc},
 //   { "patch", patch_proc},
     { "put", put_proc},
-//    { "get", get_proc},
+    { "get", get_proc},
     { "proc_tab_end", NULL}
 };
 

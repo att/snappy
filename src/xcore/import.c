@@ -44,7 +44,7 @@
 #include "stringbuilder.h"
 #include "json.h"
 
-#include "put.h"
+#include "export.h"
 
 
 struct plugin_env {
@@ -61,7 +61,7 @@ static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
 static int export(snpy_job_t *job);
 
 static int plugin_env_init(struct plugin_env *env, snpy_job_t *job);
-static int put_env_init(MYSQL* db_conn, snpy_job_t *job);
+static int import_env_init(MYSQL* db_conn, snpy_job_t *job);
 
 static int get_wd_path(int job_id, char *wrkdir_path, int wrkdir_path_size);
 
@@ -98,7 +98,7 @@ static int plugin_chooser(snpy_job_t *job, struct plugin **pi) {
         goto close_js;
         return rc;
     }
-    const char *pi_name = json_string(js, ".tp_name");
+    const char *pi_name = json_string(js, ".sp_name");
     if (!pi_name[0]) {
         status = SNPY_EINCOMPARG;
         goto close_js;
@@ -132,7 +132,7 @@ static int job_get_plugin_exec(snpy_job_t *job,
 }
 
 
-/*
+
 int plugin_env_init(struct plugin_env *env, snpy_job_t *job) {
     int rc;
     if (!env || !job)
@@ -145,17 +145,19 @@ int plugin_env_init(struct plugin_env *env, snpy_job_t *job) {
     
     return 0;
 }
-*/
 
-/*
- * return:  <= 0 - error, > 0  id 
+
+/* 
+ * get_get_id() - funny name as it is, it means to get the "get" job id.
+ *
+ * return:  <= 0 - error, > 0 - id 
  */
-static int get_export_id(MYSQL *db_conn, int job_id) {
+static int get_get_id(MYSQL *db_conn, int job_id) {
     int rc;
     int status;
     MYSQL_RES *result = NULL;
     const char *sql_fmt_str = 
-        "select id from snappy.jobs where next=%d;";
+        "select id from snappy.jobs where sub=%d;";
     rc = db_exec_sql(db_conn, 1, NULL, 0, sql_fmt_str, job_id);
     if (rc) {
         goto free_result;
@@ -186,68 +188,70 @@ free_result:
 
 
 
-static int put_env_init(MYSQL *db_conn, snpy_job_t *job) {
+static int import_env_init(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
     int status = 0;
-    char wd_path[PATH_MAX] = "";
+    char wd[PATH_MAX] = "";
     int wd_fd;
-    rc = snprintf(wd_path, sizeof wd_path, 
+    rc = snprintf(wd, sizeof wd, 
                   "/%s/%d", conf_get_run(), job->id);
-    if (rc == sizeof wd_path)
+    if (rc == sizeof wd)
         return -ERANGE;
     struct stat wd_st;
-    if (!lstat(wd_path, &wd_st) && S_ISDIR(wd_st.st_mode)) {
+    
+
+    /* wd directory check if it already exists*/
+    if (!lstat(wd, &wd_st) && S_ISDIR(wd_st.st_mode)) {
         syslog(LOG_DEBUG, "working directory exists, trying cleanup.\n");
-        if ((rc = rmdir_recurs(wd_path))) 
+        if ((rc = rmdir_recurs(wd))) 
             return rc;
     }
 
     /* setting up directories */
-    if ((rc = mkdir(wd_path, 0700))) 
+    if ((rc = mkdir(wd, 0700))) 
         return -errno;
-    if(((wd_fd = open(wd_path, O_RDONLY)) == -1) ||
+    if(((wd_fd = open(wd, O_RDONLY)) == -1) ||
         (rc = mkdirat(wd_fd, "meta", 0700))) {
     
         status = errno;
         goto free_wd_fd;
     }
-    /* move data from export dir */
-    int export_id = get_export_id(db_conn, job->id);
-    if (export_id <= 0) {
-        status = -export_id;
+    /* move data from the get job dir */
+    int get_id = get_get_id(db_conn, job->id);
+    if (get_id <= 0) {
+        status = -get_id;
         goto free_wd_fd;
     }
-    char export_data_dir[PATH_MAX] = "";
-    char put_data_dir[PATH_MAX] = "";
-    snprintf(export_data_dir, ARRAY_SIZE(export_data_dir),
-             "%s/%d/data", conf_get_run(), export_id);
+    char get_data_dir[PATH_MAX] = "";
+    char import_data_dir[PATH_MAX] = "";
+    snprintf(get_data_dir, PATH_MAX,
+             "%s/%d/data", conf_get_run(), get_id);
 
-    snprintf(put_data_dir, ARRAY_SIZE(put_data_dir),
+    snprintf(import_data_dir, PATH_MAX,
              "%s/%d/data", conf_get_run(), job->id);
 
-    rc = rename(export_data_dir, put_data_dir);
+    rc = rename(get_data_dir, import_data_dir);
     if (rc == -1) {
         status = errno;
-        char err_buf[64]; 
-        syslog(LOG_ERR, "error moving export data directory: %s.", 
-               strerror_r(errno, err_buf, sizeof err_buf));
+        syslog(LOG_ERR, "error moving export data directory: %d.", status);
         goto free_wd_fd;
     }
-    /* setup id */
 
-    if ((rc = kv_put_ival("meta/id", job->id, wd_path))) {
+    /* setup import id */
+
+    if ((rc = kv_put_ival("meta/id", job->id, wd))) {
         status = -rc;
         goto free_wd_fd;
     }
 
     /* setup cmd */
-    if ((rc = kv_put_sval("meta/cmd", job->argv[0], job->argv_size[0], wd_path))) {
+    if ((rc = kv_put_sval("meta/cmd", job->argv[0], job->argv_size[0], wd))) {
         status = -rc;
         goto free_wd_fd;
     }
 
     /* setup arg */
-    if ((rc = kv_put_sval("meta/arg", job->argv[2], job->argv_size[2], wd_path))) {
+    if ((rc = kv_put_sval("meta/arg", job->argv[2], job->argv_size[2], wd))) {
         status = -rc;
         goto free_wd_fd;
     }
@@ -272,7 +276,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if ((status = job_get_plugin_exec(job, exec, sizeof exec))) 
         return -status;
 
-    if((rc = put_env_init(db_conn, job))) {
+    if((rc = import_env_init(db_conn, job))) {
         /* handling error */
         status = SNPY_EENVJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
@@ -378,16 +382,15 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     log_rec_t log_rec;
 
     char wd_path[PATH_MAX]="";
-    char msg[256]="";
+    char msg[SNPY_LOG_MSG_SIZE]="";
 
     if (get_wd_path(job->id, wd_path, sizeof wd_path)) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-        status = SNPY_EBADJ; 
+        status = SNPY_EBADJ;
         goto change_state;
     }
 
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
-               
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ;
         goto change_state;
@@ -406,13 +409,15 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
         status = SNPY_EBADJ;
         goto change_state;
     }
+
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EDBCONN;
         goto change_state;
     }
-    /* put complete successfully */
+
+    /*  complete successfully */
     new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
     status = 0;
     
@@ -425,75 +430,13 @@ change_state:
 }
 
 /*
- * proc_read() - handles ready state
+ * proc_zombie() - handles zombie state
  *
  */
 
 static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
-    int rc;
-    
-    char *arg_buf;
-    
-    
-#if 0     
-    snpy_job_t next_job;
-    if (job->sub != 0) 
-        return -EINVAL;
-    if ((rc = db_insert_new_job(db_conn)) < 0)  
-        return rc;
-    next_job.id = rc;
-    next_job.sub = 0; next_job.next = 0; next_job.parent = job->parent;
-    next_job.grp = job->grp; next_job.root = job->root;
-    next_job.state = SNPY_SCHED_STATE_CREATED;
-    next_job.result = 0;
-    next_job.policy = BIT(0) | BIT(2); /* arg0, arg2 */
-    
-    /* setting up log */
-    struct log_rec next_log_rec = {
-        .id = job->id,
-        .old_state = 0,
-        .new_state = next_job.state,
-        .timestamp = time(NULL),
-        .res_code = 0,
-        .res_msg = "ok",
-        .extra = ""
-    };
-    char log_buf[SNPY_LOG_SIZE] = "";
-    if((rc = log_add_rec(log_buf, sizeof log_buf, &next_log_rec)))
-        return rc;
 
-    /* update sub job */
-    if((rc = db_update_job_partial(db_conn, &next_job)) || 
-       (rc = db_update_str_val(db_conn, "feid", next_job.id, job->feid)) ||
-       (rc = db_update_str_val(db_conn, "arg0", next_job.id, "export")) ||
-       (rc = db_update_str_val(db_conn, "arg2", next_job.id, job->argv[2])) ||
-       (rc = db_update_str_val(db_conn, "log", next_job.id, log_buf)))
-        
-        return rc;
-
-    /* update job status */
-    int new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-    if ((rc = db_update_int_val(db_conn, "state", job->id, new_state)) ||
-        (rc = db_update_int_val(db_conn, "next", job->id, next_job.id)))
-        return rc;
-
-    log_rec_t log_rec = {
-        .id = job->id,
-        .old_state = job->state,
-        .new_state = new_state,
-        .timestamp = time(NULL),
-        .res_code = 0,
-        .res_msg = "ok",
-        .extra = ""
-    };
-
-    memcpy(log_buf, job->log, job->log_size);
-    if ((rc = log_add_rec(log_buf, sizeof log_buf, &log_rec)) ||
-        (rc = db_update_str_val(db_conn, "log", job->id, log_buf)))
-        return rc;
-#endif
     return 0;
-
 }
 
 /* 
@@ -520,7 +463,7 @@ static int proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
  *  2 - job record missing/invalid.
  */
 
-int put_proc (MYSQL *db_conn, int job_id) {  
+int import_proc (MYSQL *db_conn, int job_id) {  
     int rc; 
     int status = 0;
     snpy_job_t *job;

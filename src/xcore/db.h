@@ -21,8 +21,6 @@
 #ifndef SNPY_DB_H
 #define SNPY_DB_H
 
-//#include <my_global.h>
-//#include <my_sys.h>
 #include <mysql.h>
 
 #include "snappy.h"

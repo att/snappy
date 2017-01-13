@@ -18,11 +18,11 @@
  *  Author: Pingkai Liu (pingkai@research.att.com)
  */
 
-#ifndef SNPY_SNAP_H
-#define SNPY_SNAP_H
+#ifndef SNPY_IMPORT_H
+#define SNPY_IMPORT_H
 
 #include <mysql.h>
 
 
-int snap_proc (MYSQL *db_conn, int job_id);
+int import_proc (MYSQL *db_conn, int job_id);
 #endif

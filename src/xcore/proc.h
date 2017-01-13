@@ -18,8 +18,8 @@
  *  Author: Pingkai Liu (pingkai@research.att.com)
  */
 
-#ifndef SNPY_PROCESSOR_H
-#define SNPY_PROCESSOR_H
+#ifndef SNPY_PROC_H
+#define SNPY_PROC_H
 #include "db.h"
 
 
@@ -31,6 +31,7 @@ typedef struct job_proc_entry {
     job_proc_t proc;
 } proc_tab_entry_t;
 
+#if 0
 int bk_single_sched_proc (MYSQL *, int);
 int bk_single_full_proc (MYSQL *, int);
 int bk_single_incr_proc (MYSQL *, int);
@@ -41,7 +42,16 @@ int diff_proc (MYSQL *, int);
 int patch_proc (MYSQL *, int);
 int put_proc (MYSQL *, int);
 int get_proc (MYSQL *, int);
+#endif 
 
+#include "bk_single_sched.h"
+#include "bk_single_full.h"
+#include "rstr_single.h"
+#include "snap.h"
+#include "export.h"
+#include "import.h"
+#include "put.h"
+#include "get.h"
 job_proc_t proc_get_job_proc(const char *job);
 
 

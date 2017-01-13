@@ -20,4 +20,6 @@ struct blk_map *blk_map_alloc(size_t n);
 int blk_map_add(struct blk_map *bm, u64 off, u64 len);
 void blk_map_free(struct blk_map *bm);
 
+int blk_map_write(int fd, struct blk_map *bm);
+int blk_map_read(int fd, struct blk_map **bm);
 #endif

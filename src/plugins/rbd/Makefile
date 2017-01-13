@@ -22,6 +22,9 @@ HEADERS = $(wildcard *.h)
 $(TARGET): $(OBJECTS)
 	$(CC) $(LDFLAGS) $(OBJECTS)  -Wall $(LIBS) -o $@
 
+install:
+	install  -m 0755 $(TARGET) /var/lib/snappy/plugins/rbd/
+
 clean:
 	rm -f *.o
 	rm -f $(TARGET)

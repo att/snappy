@@ -55,16 +55,19 @@ echo "execute command: $cmd" >> meta/log
 swift_cmd="swift -q --os-auth-url=$auth_url --os-username=$user --os-password=$passwd --os-tenant-name=$tenant --os-region-name=RegionOne"
 
 
+start_time=`date +%s`
 if [ $cmd == "put" ]; 
 then
-    start_time=`date +%s`
+    echo "exec put job" >> meta/log
     $swift_cmd upload --object-name='' snappy data
-    fin_time=`date +%s`
-    $json_cmd -f meta/arg setnumber $start_time .tp_param.put_start setnumber $fin_time .tp_param.put_fin puts > meta/arg.out
 
 elif [ $cmd == "get" ];
 then
-    for key in `cat meta/key_list`; do
-        $swift download -D ./data $key
-    done
+    echo "exec get job" >> meta/log
+    tmp=$($json_cmd -f meta/rstr_arg number .rstr_to_job_id)
+    key=$(printf %.0f "$tmp")
+    $swift_cmd download  -o ./data/data snappy $key
 fi
+
+fin_time=`date +%s`
+$json_cmd -f meta/arg setnumber $start_time .tp_param.put_start setnumber $fin_time .tp_param.put_fin puts > meta/arg.out

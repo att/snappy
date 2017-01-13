@@ -17,9 +17,6 @@ $(TARGET): $(OBJECTS)
 	ar ru $@ $^
 	ranlib $@
 
-install: 
-	install -s -m 0755 $(TARGET) /var/lib/snappy/bin/
-	
 
 clean:
 	rm -f *.o

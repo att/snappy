@@ -42,9 +42,10 @@ int snpy_strerror(int errnum, char *buf, int buf_size) {
             return -ERANGE;
         else 
             return 0;
-    }
+    } else if (!strerror_r(errnum, buf, buf_size))
+        return -EINVAL;
     else 
-        return strerror_r(errnum, buf, buf_size);
+        return 0;
 }
 
 

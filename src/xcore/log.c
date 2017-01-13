@@ -231,7 +231,8 @@ int log_add_rec_va(char *log_buf, int log_buf_size, log_rec_t *rec,
         switch (msg_val_fmt[i]) {
         case 's':
             sval = va_arg(ap, const char*);
-            json_setstring(js, sval, "[#][6].$", rec_cnt, key);
+            if (sval && sval[0]) 
+                json_setstring(js, sval, "[#][6].$", rec_cnt, key);
             break;
         case 'i':
             ival = va_arg(ap, long);

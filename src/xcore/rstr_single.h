@@ -18,10 +18,10 @@
  *  Author: Pingkai Liu (pingkai@research.att.com)
  */
 
-#ifndef SNPY_RSTR_SINGLE_FULL_H
-#define SNPY_RSTR_SINGLE_FULL_H
+#ifndef SNPY_RSTR_SINGLE_H
+#define SNPY_RSTR_SINGLE_H
 
 #include <mysql.h>
 
-int rstr_single_full_proc (MYSQL *db_conn, int job_id);
+int rstr_single_proc (MYSQL *db_conn, int job_id);
 #endif

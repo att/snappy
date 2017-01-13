@@ -96,9 +96,10 @@ typedef int64_t s64;
 #define _array_size_chk(arr) 0
 #endif
 
-int kv_get_val(const char *key, char *val, int val_size, const char *wd);
+int kv_get_sval(const char *key, char *val, int val_size, const char *wd);
 int kv_get_ival(const char *key, int *val, const char *wd);
-int kv_put_val(const char *key, const char *val, int val_size, const char *wd);
+int kv_put_sval(const char *key, const char *val, int val_size, const char *wd);
+int kv_put_bval(const char *key, const void *val, int val_size, const char *wd);
 int kv_put_ival(const char *key, int val, const char *wd);
 
 size_t strlcat(char *dst, const char *src, size_t siz);
@@ -107,5 +108,24 @@ size_t strlcpy(char *dst, const char *src, size_t siz);
 int rmdir_recurs(const char *dir);
 int mkdir_p(const char *dir_path, const mode_t mode) ;
 int mkdir_argv(const char *fmt, ...) ;
+
+
+int snpy_get_json_val(const char *buf, int buf_size,
+                      const char *path,
+                      void *val, int val_size);
+
+enum {
+    SNPY_LOG_NONE,
+    SNPY_LOG_INFO,
+    SNPY_LOG_WARN,
+    SNPY_LOG_DEBUG,
+    SNPY_LOG_ERR,
+    SNPY_LOG_FATAL,
+    SNPY_LOG_PANIC
+};
+
+int snpy_logger_open(const char *log_fn, int flag);
+int snpy_logger(int priority, const char *fmt, ...);
+void snpy_logger_close(int flag);
 #endif
 

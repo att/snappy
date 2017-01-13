@@ -60,9 +60,9 @@ struct rbd_conf {
 };
 
 struct rbd_hdr {
-    u64 blk_dev_size;
-    u64 blk_map_offset;
-    u64 compress_type;
+    u64 blk_dev_size;   /* total size */
+    u64 blk_map_offset; /* location of block map */
+    u64 compress_type;  /* type of compression */
 };
 
 const char* snpy_rbd_strerror(int e) {
@@ -74,10 +74,8 @@ int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) ;
 static int diff_cb_snap(uint64_t off, size_t len, int exists, void *arg);
 void rbd_data_destroy(struct rbd_data *rbd) ;
 
-#if 0
-static int kv_get_val(const char *key, char *val, int val_size);
-static int kv_put_val(const char *key, const char *val, int val_size);
-#endif
+static int snpy_rbd_write_image(rbd_image_t image, u64 off, u64 len, int fd, 
+                                char *buf, size_t buf_size) ;
 static int do_snap(const char *arg, int arg_size);
 static int do_export(const char *arg, int arg_size);
 static int do_import(const char *arg, int arg_size);
@@ -96,7 +94,6 @@ struct diff_cb_export_arg {
     int fd;
     rbd_image_t image;
     char *buf;
-    struct data_tag *tag;
     struct blk_map *bm;
     int status;
 };
@@ -104,16 +101,20 @@ struct diff_cb_export_arg {
 static int diff_cb_export(uint64_t off, size_t len, int exists, void *arg) {
     struct diff_cb_export_arg *p = arg;
     int rc;
-    if (!p || !p->buf || p->fd <= 0 || !p->image) {
+    if (!p || !p->buf || p->fd <= 0 || !p->image || !p->bm) {
         p->status = EINVAL;
         return -p->status;
     }
     if (exists) {
         /* update the segment list */
-        blk_map_add(p->bm, off, len);
+        rc = blk_map_add(p->bm, off, len);
+        if (rc) {
+            p->status = -rc;
+            return rc;
+        }
+
         /* write to data file */
-        ssize_t nbyte;
-        nbyte = rbd_read(p->image, off, len, p->buf);
+        ssize_t nbyte = rbd_read(p->image, off, len, p->buf);
         if(nbyte != len) {
             p->status = -nbyte;
             return nbyte;
@@ -161,17 +162,20 @@ static int do_snap(const char *arg, int arg_size) {
 
     if ((rc = rbd_conf_init(&conf, arg))) {
         status = -rc;
+        snpy_logger(SNPY_LOG_ERR, "error getting rbd connection: %d.", status);
         goto err_out;
     }
 
     if((rc = rbd_data_init(&conf, &rbd))) {
         status = -rc;
+        snpy_logger(SNPY_LOG_ERR, "error getting rbd connection: %d.", status);
         goto err_out;
     }                                           /* allocation point: rbd */
 
     char job_id[32];
-    if ((rc = kv_get_val("meta/id", job_id, sizeof job_id, NULL))) {
+    if ((rc = kv_get_sval("meta/id", job_id, sizeof job_id, NULL))) {
         status = -rc;
+        snpy_logger(SNPY_LOG_ERR, "can not get meta/id: %d.", status);
         goto cleanup_rbd_data;
     }
     time_t snap_start = time(NULL);
@@ -179,6 +183,7 @@ static int do_snap(const char *arg, int arg_size) {
     sprintf(snap_name, "snpy-%s", job_id);
     if((rc = rbd_snap_create(rbd.image, snap_name))) {
         status = -rc;
+        snpy_logger(SNPY_LOG_ERR, "can not create image: %d.", status);
         goto cleanup_rbd_data;
     }
     if(rbd_snap_set(rbd.image, snap_name))  {
@@ -245,9 +250,9 @@ cleanup_rbd_data:
 err_out:
 
     sprintf(str_buf, "%d", status);
-    rc = kv_put_val("meta/status", str_buf, sizeof str_buf, NULL); 
+    rc = kv_put_sval("meta/status", str_buf, sizeof str_buf, NULL); 
     status_msg = snpy_rbd_strerror(status);
-    rc = kv_put_val("meta/status_msg", status_msg, strlen(status_msg)+1, NULL);
+    rc = kv_put_sval("meta/status_msg", status_msg, strlen(status_msg)+1, NULL);
 
     return rc;
 }
@@ -300,9 +305,55 @@ err_out:
 }
 
 
+static int update_import_arg(const char *arg, 
+                             time_t start, 
+                             time_t fin) {
+    /* update arg:
+     * 1. set vol_size, alloc_size and snap_name in sp_param object
+     * 2. set est_size in top level object.
+     */
+    int rc;
+    int status = 0;
+    int error = 0;
+    struct json *js = json_open(JSON_F_NONE, &error);
+    if (!js) {
+        status = error;
+        goto err_out;
+    }                                                   /* allocation point: js */
+    rc = json_loadstring(js, arg);
+    if (rc) {
+        status = rc;
+        goto close_js;
+    }
+
+    if ((rc = json_setnumber(js, start, ".sp_param.import_start")) ||
+        (rc = json_setnumber(js, fin, ".sp_param.import_fin"))) {
+        status = rc;
+        goto close_js;
+    } 
+    
+    FILE *arg_fp = fopen("meta/arg.out", "w");
+    if (!arg_fp) {
+        status = errno;
+        goto close_js;
+    }                                                   /* ALLOCATION POINT: arg_fp */
+    
+    if ((rc = json_printfile(js, arg_fp, 0))) {
+        status = rc;
+        goto fclose_arg_fp;
+    }
+
+fclose_arg_fp:
+    fclose(arg_fp);
+
+close_js:
+    json_close(js);
+err_out:    
+    return status;
+}
+
 static int do_export(const char *arg, int arg_size) {
 
-#if 1
     int rc;
     struct rbd_data rbd;
     struct rbd_conf conf;
@@ -311,6 +362,8 @@ static int do_export(const char *arg, int arg_size) {
     int status_msg[1024];
     char str_buf[64];
     
+
+    /* prepare rbd image handle */
     start = time(NULL);
     if ((rc = rbd_conf_init(&conf, arg))) {
         status = EINVAL;
@@ -321,7 +374,7 @@ static int do_export(const char *arg, int arg_size) {
         goto err_out;
     }
     char job_id[32];
-    if (kv_get_val("meta/id", job_id, sizeof job_id, NULL)) {
+    if (kv_get_sval("meta/id", job_id, sizeof job_id, NULL)) {
         status = -rc;
         goto cleanup_rbd_data;
     }
@@ -329,57 +382,120 @@ static int do_export(const char *arg, int arg_size) {
         status = -rc;
         goto cleanup_rbd_data;
     }
-    char *buf = malloc(rbd.info.obj_size);
-    if (!buf) {
-        status = ENOMEM;
-        goto cleanup_rbd_data;
-    }
-    char data_fn[PATH_MAX]="data/";
-    int data_fd = open(strlcat(data_fn, job_id, ARRAY_SIZE(data_fn)),
-                       O_WRONLY|O_CREAT|O_TRUNC, 0600);
-    if (data_fd == -1) {
-        status = errno;
-        goto free_buf;
-    }
-    
-    struct data_tag tag = 
-    {   
-        .time = time(NULL),
-        .segc = 0,
-        .segv = {{0}}
-    };
-
-    struct diff_cb_export_arg export_arg =
-    {   .image = rbd.image,
-        .fd = data_fd,
-        .buf = buf,
-        .tag = &tag,
-        .status = 0
-    };
 
     rc = rbd_snap_set(rbd.image, conf.snap);
     if (rc) {
         status = -rc;
+        goto cleanup_rbd_data;
+    }   /* done prepare rbd image */
+
+    /* prepare export call back function write buffer */
+    char *buf = malloc(rbd.info.obj_size);
+    if (!buf) {
+        status = ENOMEM;
+        goto cleanup_rbd_data;
+    }
+
+    /* prepare data file for write */
+    char data_fn[PATH_MAX]="data/";
+    /* use job id as data file name */
+    if (strlcat(data_fn, job_id, PATH_MAX) >= PATH_MAX) {
+        status = ENAMETOOLONG;
+        goto free_buf;
+    }
+    int data_fd = open(data_fn, O_WRONLY|O_CREAT|O_TRUNC, 0600);
+    if (data_fd == -1) {
+        status = errno;
+        goto free_buf;
+    }
+
+    struct rbd_hdr hdr = {
+        .blk_dev_size = rbd.info.size,
+        .blk_map_offset = -1,
+        .compress_type = 1
+    };
+    /* seek pass the rbd header */
+    lseek(data_fd, sizeof(struct rbd_hdr), SEEK_SET);
+    
+    /* prepare export data block map */
+    struct blk_map *bm = blk_map_alloc(4096);
+    if (!bm) {
+        status = ENOMEM;
         goto close_data_fd;
     }
-    rc = rbd_diff_iterate(rbd.image, NULL, 0, rbd.info.size, diff_cb_export, &export_arg);
+
+    /* initialize callback argument */
+    struct diff_cb_export_arg export_arg =
+    {   .image = rbd.image,
+        .fd = data_fd,
+        .buf = buf,
+        .bm = bm,
+        .status = 0
+    };
+
+    rc = rbd_diff_iterate(rbd.image, NULL, 0, rbd.info.size,
+                          diff_cb_export, &export_arg);
+
+     
     if (rc)  {
         status = -rc;
-        goto close_data_fd;
+        snpy_logger(SNPY_LOG_ERR, "rbd_diff_iterate: %d.", rc);
+        goto free_blk_map;
     } 
+
     if (export_arg.status) {
         status = export_arg.status;
-        goto close_data_fd;
+        snpy_logger(SNPY_LOG_ERR, "rbd_diff_iterate: %d.", rc);
+        goto free_blk_map;
     }
-    /* write the tag */
-    rc = write(data_fd, &tag, sizeof tag);
+
+    /* finishing export task  */
+    
+    hdr.blk_map_offset = lseek(data_fd, 0, SEEK_CUR); /* save current offset */
+
+    rc = blk_map_write(data_fd, bm);    /* write block_map */
     if (rc == -1) {
         status = errno;
-        goto close_data_fd;
+        goto free_blk_map;
     }
-    
+
+    /* append the data tag */
+    char tag_buf[4096];
+    int tag_fd = open("meta/tag", O_RDONLY);
+    if (tag_fd < 0) {
+        status = errno;
+        snpy_logger(SNPY_LOG_ERR, "can not open tag file: %d.", errno);
+        goto free_blk_map;
+    }
+    ssize_t nread = read(tag_fd, tag_buf, sizeof tag_buf);
+    if (nread != sizeof tag_buf) {
+        status = errno;     /* save errno */
+        snpy_logger(SNPY_LOG_ERR, "error read tag file: %d.", status);
+        close(tag_fd);
+        goto free_blk_map;
+    }
+    close(tag_fd);
+    ssize_t nwrite = write(data_fd, tag_buf, sizeof tag_buf);
+    if (nwrite != sizeof tag_buf) {
+        snpy_logger(SNPY_LOG_ERR, "error append tag file: %d.", errno);
+        goto free_blk_map;
+    }
+   
+    /* fill in rbd_hdr */
+    lseek(data_fd, 0, SEEK_SET);
+    if ((nwrite = write(data_fd, &hdr, sizeof hdr)) != sizeof hdr) {
+        snpy_logger(SNPY_LOG_ERR, "error update rbd data header: %d", errno);
+        goto free_blk_map;
+    }
+
+
     fin = time(NULL);
-    update_export_arg(arg, start, fin);
+    if ((rc = update_export_arg(arg, start, fin))) {
+        snpy_logger(SNPY_LOG_ERR, "update_export_arg: %d.", rc);
+    }
+
+free_blk_map:
+    blk_map_free(bm);
 close_data_fd:
     close(data_fd);
 free_buf:
@@ -387,20 +503,47 @@ free_buf:
 cleanup_rbd_data:
     rbd_data_destroy(&rbd);
 err_out:
-    sprintf(str_buf, "%d", status);
-    fprintf(stderr, "export error: %s.\n", str_buf);
-    kv_put_val("meta/status", str_buf,sizeof str_buf);
+    kv_put_ival("meta/status", status, NULL);
     strerror_r(status, str_buf, sizeof str_buf);
-    kv_put_val("meta/status_msg", str_buf, sizeof str_buf);
+    kv_put_sval("meta/status_msg", str_buf, sizeof str_buf, NULL);
 
     return -status;
-#endif
 
 }
 
 
+
+static int snpy_rbd_write_image(rbd_image_t image, u64 off, u64 len, int fd, 
+                         char *buf, size_t buf_size) {
+
+    ssize_t nread, nwrite;
+    while (1) {
+        if (len <= buf_size) {
+            nread = read(fd, buf, len);
+            if (nread != len) 
+                return -errno;
+
+            nwrite = rbd_write(image, off, len, buf);
+            if (nwrite != len) 
+                return -errno;
+
+            break;
+        } else {
+            nread = read(fd, buf, buf_size); 
+            if (nread != buf_size)
+                return -errno;
+            nwrite = rbd_write(image, off, buf_size, buf);
+            if (nwrite != buf_size)
+                return -errno;
+
+            off += buf_size;
+            len -= buf_size;
+        }
+    }
+    return 0;
+}
+
 static int do_import(const char *arg, int arg_size) {
-#if 0
     int rc;
     struct rbd_data rbd;
     struct rbd_conf conf;
@@ -410,6 +553,7 @@ static int do_import(const char *arg, int arg_size) {
     char str_buf[64];
     
     start = time(NULL);
+    /* prepare rbd connection */
     if ((rc = rbd_conf_init(&conf, arg))) {
         status = EINVAL;
         goto err_out;
@@ -417,61 +561,84 @@ static int do_import(const char *arg, int arg_size) {
     if((rc = rbd_data_init(&conf, &rbd))) {
         status = EINVAL;
         goto err_out;
-    }
+    }                                       /* RAII point */
     char job_id[32];
-    if (kv_get_val("meta/id", job_id, sizeof job_id, NULL)) {
+    if (kv_get_sval("meta/id", job_id, sizeof job_id, NULL)) {
         status = -rc;
         goto cleanup_rbd_data;
     }
+    /*
+    char rstr_job_id[32];
+    if (kv_get_sval("meta/rstr_job_id", rstr_job_id, sizeof rstr_job_id, NULL)) {
+        status = -rc;
+        goto cleanup_rbd_data;
+    }
+    */
     if((rc = rbd_stat(rbd.image, &rbd.info, sizeof rbd.info))) {
         status = -rc;
         goto cleanup_rbd_data;
     }
-    char *buf = malloc(rbd.info.obj_size);
+    
+    /* allocation buffer */
+    size_t buf_size = 4*(1<<10);
+    char *buf = malloc(buf_size);   
     if (!buf) {
         status = ENOMEM;
         goto cleanup_rbd_data;
-    }
-    char data_fn[PATH_MAX]="data/";
-    int data_fd = open(strncat(data_fn, job_id, ARRAY_SIZE(data_fn)), 
-                       O_WRONLY|O_CREAT|O_TRUNC, 0600);
+    }                                       /* RAII point */
+
+    char data_fn[PATH_MAX]="data/data";
+    int data_fd = open(data_fn, O_RDONLY, 0600);
     if (data_fd == -1) {
         status = errno;
         goto free_buf;
-    }
-    
-    struct data_tag tag = 
-    {   
-        .time = time(NULL),
-        .segc = 0,
-        .segv = {{0}}
-    };
-    struct diff_cb_export_arg export_arg =
-    {   .image = rbd.image,
-        .fd = data_fd,
-        .buf = buf,
-        .tag = &tag,
-        .status = 0
-    };
-        
-    rc = rbd_diff_iterate(rbd.image, NULL, 0, rbd.info.size, diff_cb_export, &export_arg);
-    if (rc)  {
-        status = -rc;
-        goto close_data_fd;
-    } 
-    if (export_arg.status) {
-        status = export_arg.status;
-        goto close_data_fd;
-    }
-    /* write the tag */
-    rc = write(data_fd, &tag, sizeof tag);
-    if (rc == -1) {
+    }                                       /* RAII point */
+
+    struct rbd_hdr hdr;
+    ssize_t nread = pread(data_fd, &hdr, sizeof hdr, 0);
+    if ( nread != sizeof hdr) {
         status = errno;
+        snpy_logger(SNPY_LOG_ERR, "error read rbd header: %d.", status);
         goto close_data_fd;
+    }
+
+    /* read out block map */
+    lseek(data_fd, hdr.blk_map_offset, SEEK_SET);
+    struct blk_map *bm;
+    if ((rc = blk_map_read(data_fd, &bm))) {
+        snpy_logger(SNPY_LOG_ERR, "error read rbd header: %d.", rc);
+        goto close_data_fd;
+    }                                       /* RAII point */
+    /* TODO: sanity check for blk_map */
+    
+    /* EXPRIMENTAL: do discard */
+    /*
+    snpy_logger(SNPY_LOG_DEBUG, "starting discarding rbd volume: %d.");
+    rc = rbd_discard(rbd.image, 0, rbd.info.size);
+    snpy_logger(SNPY_LOG_DEBUG, "done discarding rbd volume: %d.", rc);
+    */
+    /* writing rbd image */
+    lseek(data_fd, sizeof hdr, SEEK_SET); /* seek to the beginning of data */
+    int i;
+    for (i = 0; i < bm->nuse; i ++) {
+        u64 off = bm->segv[i].off;
+        u64 len = bm->segv[i].len;
+        if ((rc = snpy_rbd_write_image(rbd.image, off, len, data_fd,
+                                       buf, buf_size)))
+        {
+            snpy_logger(SNPY_LOG_ERR, "error write image: %d.", rc);
+            goto free_bm;
+        }
+        snpy_logger(SNPY_LOG_DEBUG, "done writing segment: %d.", i);
     }
     
     fin = time(NULL);
-    update_export_arg(arg, start, fin);
+    /* update arg: add import starting and finishing time */
+    if ((rc = update_import_arg(arg, start, fin))) {
+        snpy_logger(SNPY_LOG_ERR, "update_import_arg: %d.", rc);
+    }
+free_bm:
+    blk_map_free(bm);
 close_data_fd:
     close(data_fd);
 free_buf:
@@ -480,13 +647,12 @@ cleanup_rbd_data:
     rbd_data_destroy(&rbd);
 err_out:
     sprintf(str_buf, "%d", status);
-    kv_put_val("meta/status", str_buf,sizeof str_buf);
+    kv_put_sval("meta/status", str_buf,sizeof str_buf, NULL);
     strerror_r(status, str_buf, sizeof str_buf);
-    kv_put_val("meta/status_msg", str_buf, sizeof str_buf);
+    kv_put_sval("meta/status_msg", str_buf, sizeof str_buf, NULL);
 
     return -status;
 
-#endif
     return 0;
 }
 
@@ -513,7 +679,7 @@ int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) {
     if (rados_ioctx_create(rbd->cluster, conf->pool, &rbd->io_ctx)) 
         goto free_rados_cluster;
     if ((rc = rbd_open(rbd->io_ctx, conf->image, &rbd->image, NULL))) {
-        printf("%s\n", strerror(-rc));
+        snpy_logger(SNPY_LOG_ERR, "rbd_data_init: can not open rbd vol: %d", rc);
         goto free_rados_ioctx;
     }
     return 0;
@@ -542,13 +708,18 @@ int main(void) {
     char arg[4096];
     char id_buf[64];
     int job_id;
-    if (kv_get_val("meta/cmd", cmd, sizeof cmd, NULL)) 
+
+    /* open log */
+    snpy_logger_open("meta/log", 0);
+    
+
+    if (kv_get_sval("meta/cmd", cmd, sizeof cmd, NULL)) 
         goto err_out;
-    if (kv_get_val("meta/id", id_buf, sizeof id_buf, NULL))
+    if (kv_get_sval("meta/id", id_buf, sizeof id_buf, NULL))
         goto err_out;
     job_id = atoi(id_buf);
 
-    if (kv_get_val("meta/arg", arg, sizeof arg, NULL))
+    if (kv_get_sval("meta/arg", arg, sizeof arg, NULL))
         goto err_out;
     char buf[64];
     struct rbd_conf conf;
@@ -564,6 +735,6 @@ int main(void) {
         rc = do_patch(arg, sizeof arg);
     } 
 err_out:
-
+    snpy_logger_close(0);
     return job_id;
 }

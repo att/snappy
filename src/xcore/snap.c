@@ -111,13 +111,13 @@ static int snap_env_init(snpy_job_t *job) {
     }
 
     /* setup cmd */
-    if ((rc = kv_put_val("meta/cmd", job->argv[0], job->argv_size[0], wd_path))) {
+    if ((rc = kv_put_sval("meta/cmd", job->argv[0], job->argv_size[0], wd_path))) {
         status = -rc;
         goto free_wd_fd;
     }
 
     /* setup arg */
-    if ((rc = kv_put_val("meta/arg", job->argv[2], job->argv_size[2], wd_path))) {
+    if ((rc = kv_put_sval("meta/arg", job->argv[2], job->argv_size[2], wd_path))) {
         status = -rc;
         goto free_wd_fd;
     }
@@ -253,7 +253,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     char arg_out[4096];
     
     if ((rc = kv_get_ival("meta/status", &status, wd_path)) ||
-        (rc = kv_get_val("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
+        (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ;

@@ -24,12 +24,15 @@
 #include "ciniparser.h"
 
 struct plugin {
+    int id;
     const char *name;
     dictionary *info;
+
 };
 
 
 int plugin_tbl_init(void);
-struct plugin *plugin_srch(const char *name);
+struct plugin *plugin_srch_by_name(const char *name);
+struct plugin *plugin_srch_by_id(int id);
 const char *plugin_get_exec(struct plugin *pi);
 #endif
