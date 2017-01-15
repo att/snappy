@@ -82,17 +82,16 @@ static int job_get_wd(int job_id, char *wd, int wd_size) {
  */
 
 static int plugin_chooser(snpy_job_t *job, struct plugin **pi) {
-    int status = 0;
-    if (!job || !pi) 
+    int rc = 0, status = 0;
+    if (!job || !pi)
         return -EINVAL;
     int error;
     struct json *js = json_open(JSON_F_NONE, &error);
     if (!js)
         return -SNPY_EARG;
-    int rc = json_loadstring(js, job->argv[2]);
-    if (rc) {
-        goto close_js;
-        return rc;
+    if ((rc = json_loadstring(js, job->argv[2]))) {
+        json_close(js);
+        return -SNPY_EARG;
     }
     const char *pi_name = json_string(js, ".tp_name");
     if (!pi_name[0]) {
@@ -115,7 +114,7 @@ static int job_get_plugin_exec(snpy_job_t *job,
     if (!job)
         return -EINVAL;
     struct plugin *pi;
-    status = plugin_chooser(job, &pi);
+    status = plugin_choose(job->argv[2], NULL, &pi);
     if (status) 
         return -status;
     int rc = snprintf(pi_exec_path, pi_exec_path_len, "%s/%s/%s",

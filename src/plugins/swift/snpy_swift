@@ -48,7 +48,7 @@ auth_url=$($json_cmd -f meta/arg string .tp_param.url)
 user=$($json_cmd -f meta/arg string .tp_param.user)
 passwd=$($json_cmd -f meta/arg string .tp_param.password)
 tenant=$($json_cmd -f meta/arg string .tp_param.project)
-
+container=$($json_cmd -f meta/arg string .tp_param.project)
 
 echo "execute command: $cmd" >> meta/log
 
@@ -59,14 +59,14 @@ start_time=`date +%s`
 if [ $cmd == "put" ]; 
 then
     echo "exec put job" >> meta/log
-    $swift_cmd upload --object-name='' snappy data
+    $swift_cmd upload --object-name='' $container data
 
 elif [ $cmd == "get" ];
 then
     echo "exec get job" >> meta/log
     tmp=$($json_cmd -f meta/rstr_arg number .rstr_to_job_id)
     key=$(printf %.0f "$tmp")
-    $swift_cmd download  -o ./data/data snappy $key
+    $swift_cmd download  -o ./data/data $container $key
 fi
 
 fin_time=`date +%s`

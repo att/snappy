@@ -111,8 +111,7 @@ JSON_PUBLIC int json_v_api(void);
  *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-//#define JSON_EBASE -(('J' << 24) | ('S' << 16) | ('O' << 8) | 'N')
-#define JSON_EBASE (('J' << 24) | ('S' << 16) | ('O' << 8) | 'N')
+#define JSON_EBASE -(('J' << 24) | ('S' << 16) | ('O' << 8) | 'N')
 #define JSON_ERROR(error) ((error) >= JSON_EBASE && (error) < JSON_ELAST)
 
 enum json_errors {

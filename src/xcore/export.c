@@ -115,7 +115,7 @@ static int job_get_plugin_exec(snpy_job_t *job,
     if (!job)
         return -EINVAL;
     struct plugin *pi;
-    status = plugin_chooser(job, &pi);
+    status = plugin_choose(job->argv[2], &pi, NULL);
     if (status) 
         return -status;
     int rc = snprintf(pi_exec_path, pi_exec_path_len, "%s/%s/%s",

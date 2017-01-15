@@ -34,7 +34,10 @@
 #include "snappy.h"
 #include "ciniparser.h"
 #include "stringbuilder.h"
+
+#include "json.h"
 #include "snpy_util.h"
+
 
 
 #define PLUG_NAME_LEN 64
@@ -124,6 +127,52 @@ const char *plugin_get_exec(struct plugin *pi) {
     return ciniparser_getstring(pi->info, ":exec", "");
 }
 
+
+int plugin_choose(const char *json_arg, struct plugin **sp, struct plugin **tp) {
+    int rc = 0, status = 0;
+
+    if (!json_arg) 
+        return -EINVAL;
+
+    struct json *js = json_open(JSON_F_NONE, &status);
+    if (!js)
+        return -SNPY_EARG;
+
+    if (json_loadstring(js, json_arg)) {
+        json_close(js);
+        return -SNPY_EARG;
+    }
+
+    if (sp) {
+        const char *pi_name = json_string(js, ".sp_name");
+        if (!pi_name[0]) {
+            status = SNPY_EINCOMPARG;
+            goto close_js;
+        }
+        *sp = plugin_srch_by_name(pi_name);
+        if (!(*sp)) {
+            status = SNPY_ENOPLUG;
+            goto close_js;
+        }
+    }
+
+    if (tp) {
+        const char *pi_name = json_string(js, ".tp_name");
+        if (!pi_name[0]) {
+            status = SNPY_EINCOMPARG;
+            goto close_js;
+        }
+        *tp = plugin_srch_by_name(pi_name);
+        if (!(*tp)) {
+            status = SNPY_ENOPLUG;
+            goto close_js;
+        }
+    }
+    
+close_js:
+    json_close(js);
+    return -status;
+}
 
 #if 0
 

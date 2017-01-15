@@ -35,4 +35,5 @@ int plugin_tbl_init(void);
 struct plugin *plugin_srch_by_name(const char *name);
 struct plugin *plugin_srch_by_id(int id);
 const char *plugin_get_exec(struct plugin *pi);
+int plugin_choose(const char *json_arg, struct plugin **sp, struct plugin **tp);
 #endif
