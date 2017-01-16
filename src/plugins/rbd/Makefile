@@ -1,5 +1,6 @@
 TARGET = snpy_rbd
 
+SNPY_LIB = ../../libs/libsnpy.a
 LIBS = -Wl,-Bstatic -lsnpy -lrados -lrbd -lboost_system -lboost_thread -lcrypto++  -lstdc++  -Wl,-Bdynamic  -lpthread -lm -ldl
 #LIBS = -lrados -lrbd -lboost_system -lboost_thread -lcryptopp -lstdc++ -lpthread -lm -ldl
 CC = gcc
@@ -19,7 +20,7 @@ HEADERS = $(wildcard *.h)
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
-$(TARGET): $(OBJECTS)
+$(TARGET): $(OBJECTS) $(SNPY_LIB)
 	$(CC) $(LDFLAGS) $(OBJECTS)  -Wall $(LIBS) -o $@
 
 install:
