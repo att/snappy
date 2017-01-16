@@ -43,21 +43,6 @@ mempcpy (void *dest, const void *src, size_t n)
   return (char *) memcpy (dest, src, n) + n;
 }
 
-/* 
- * jsmn_streq() - helper function 
- *
- * return: 0 - equal, 1 - unequal
- */
-/*
-int jsmn_strcmp(const char *s, int size, 
-                        const char *js, jsmntok_t *tok) {
-    if (tok->type == JSMN_STRING && size == tok->end - tok->start &&
-        strncmp(js + tok->start, s, tok->end - tok->start) == 0) {
-        return 0;
-    }
-    return 1;
-}
-*/
 int kv_get_sval(const char *key, char *val, int val_size, const char *wd) 
 {
     int fd;
@@ -68,7 +53,8 @@ int kv_get_sval(const char *key, char *val, int val_size, const char *wd)
     if (!wd) {
         strncpy(key_path, key, sizeof key_path);
     } else if (wd && 
-        snprintf(key_path, sizeof key_path, "%s/%s", wd, key) >= sizeof key_path) {
+               snprintf(key_path, sizeof key_path, "%s/%s", wd, key) 
+               >= sizeof key_path) {
         return -ENAMETOOLONG;
     }
 
@@ -89,7 +75,7 @@ int kv_get_sval(const char *key, char *val, int val_size, const char *wd)
         goto close_fd;
     }
     val[nbyte] = 0;
-    return 0;
+    status = 0;
 
 close_fd:
     close(fd);
@@ -110,7 +96,7 @@ int kv_get_ival(const char *key, int *val, const char *wd) {
     tmp = strtol(val_buf, &endptr, 0);
     if (((tmp == LONG_MIN || tmp == LONG_MAX) && errno == ERANGE) || 
         (tmp == 0 && errno != 0))  {
-        return errno;
+        return -errno;
     }
     if (*endptr) 
         return -EINVAL;
@@ -136,24 +122,19 @@ int kv_put_sval(const char *key, const char *val, int val_size, const char *wd)
         return -ENAMETOOLONG;
     }
     
-    if (val_len >= val_size) {
-        status = ERANGE;
-        goto err_out;
-    }
-    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0) {
-        status = errno;
-        goto err_out;
-    }
+    if (val_len >= val_size) 
+        return -ERANGE;
+    
+    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0) 
+        return -errno;
+    
     if (write(fd, val, val_len) != val_len) {
-        status = errno;
-        goto close_fd;
+        close(fd);
+        return -errno;
     }
         
+    close(fd);
     return 0;
-close_fd:
-        close(fd);
-err_out:
-        return -status;
 }
 
 int kv_put_bval(const char *key, 
@@ -175,19 +156,15 @@ int kv_put_bval(const char *key,
         return -ENAMETOOLONG;
     }
     
-    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) < 0) {
-        status = errno;
-        goto err_out;
-    }
+    if ((fd = open(key_path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) == -1) 
+        return -errno;
+    
     if (write(fd, val, val_size) != val_size) {
-        status = errno;
-        goto close_fd;
-    }
-    return 0;
-close_fd:
         close(fd);
-err_out:
-        return -status;
+        return -errno;
+    }
+    close(fd);
+    return 0;
 }
 
 
@@ -344,7 +321,7 @@ int mkdir_p(const char *dir, const mode_t mode) {
     strncpy(tmp, dir, sizeof(tmp));
     len = strlen(tmp);
     if (len >= sizeof(tmp)) {
-        return -1;
+        return -ENAMETOOLONG;
     }
 
     /* remove trailing slash */
@@ -360,11 +337,11 @@ int mkdir_p(const char *dir, const mode_t mode) {
             if (stat(tmp, &sb) != 0) {
                 /* path does not exist - create directory */
                 if (mkdir(tmp, mode) < 0) {
-                    return -1;
+                    return -errno;
                 }
             } else if (!S_ISDIR(sb.st_mode)) {
                 /* not a directory */
-                return -1;
+                return -EINVAL;
             }
             *p = '/';
         }
@@ -373,17 +350,17 @@ int mkdir_p(const char *dir, const mode_t mode) {
     if (stat(tmp, &sb) != 0) {
         /* path does not exist - create directory */
         if (mkdir(tmp, mode) < 0) {
-            return -1;
+            return -errno;
         }
     } else if (!S_ISDIR(sb.st_mode)) {
         /* not a directory */
-        return -1;
+        return -EINVAL;
     }
     return 0;
 }
 
 int mkdir_argv(const char *fmt, ...) {
-    char buf[4096] = "";
+    char buf[PATH_MAX] = "";
     int rc;
     va_list ap;
 
@@ -392,7 +369,7 @@ int mkdir_argv(const char *fmt, ...) {
     va_end(ap);
     
     if (rc < 0 || rc == sizeof buf) 
-        return -ERANGE;
+        return -ENAMETOOLONG;
     
     if ((rc = mkdir(buf, 0600)))
         return -errno;
