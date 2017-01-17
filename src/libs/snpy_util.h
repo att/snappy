@@ -113,6 +113,7 @@ int mkdir_argv(const char *fmt, ...) ;
 int snpy_get_json_val(const char *buf, int buf_size,
                       const char *path,
                       void *val, int val_size);
+ssize_t snpy_get_free_spc(const char *path);
 
 enum {
     SNPY_LOG_NONE,

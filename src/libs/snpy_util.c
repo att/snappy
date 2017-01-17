@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/statvfs.h>
 #include <fcntl.h>
 #include <fts.h>
 #include <unistd.h>
@@ -482,4 +483,14 @@ int snpy_logger(int priority, const char *fmt, ...) {
 
 void snpy_logger_close(int flag) {
     close(logger.fd);
+}
+
+
+ssize_t snpy_get_free_spc(const char *path) {
+    struct statvfs sv;
+    if (statvfs(path, &sv) == -1) {
+        return -errno;
+    }
+
+    return sv.f_bsize * sv.f_bfree;
 }
