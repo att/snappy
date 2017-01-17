@@ -48,7 +48,7 @@ auth_url=$($json_cmd -f meta/arg string .tp_param.url)
 user=$($json_cmd -f meta/arg string .tp_param.user)
 passwd=$($json_cmd -f meta/arg string .tp_param.password)
 tenant=$($json_cmd -f meta/arg string .tp_param.project)
-container=$($json_cmd -f meta/arg string .tp_param.project)
+container=$($json_cmd -f meta/arg string .tp_param.container)
 
 echo "execute command: $cmd" >> meta/log
 
