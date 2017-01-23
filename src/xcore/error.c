@@ -26,26 +26,21 @@
 #include "json.h"
 
 
-int snpy_strerror(int errnum, char *buf, int buf_size) {
+const char* snpy_strerror(int errnum) {
+    /*
     if (!buf) 
         return -EINVAL;
     buf[0] = 0;
-    if (errnum >= JSON_EBASE && errnum < JSON_ELAST) {
-        if(strlcpy(buf, json_strerror(errnum), buf_size) >= buf_size)
-            return -ERANGE;
-        else 
-            return 0;
-    }
-    if (errnum >= SNPY_EBASE && errnum < SNPY_ELAST) {
-        int rc = strlcpy(buf, snpy_errmsg_tab[errnum - SNPY_EBASE], buf_size); 
-        if ( rc >= buf_size)
-            return -ERANGE;
-        else 
-            return 0;
-    } else if (!strerror_r(errnum, buf, buf_size))
-        return -EINVAL;
+    */
+    if (errnum >= JSON_EBASE && errnum < JSON_ELAST) 
+        return json_strerror(errnum);
+    
+    if (errnum >= SNPY_EBASE && errnum < SNPY_ELAST) 
+        return snpy_errmsg_tab[errnum - SNPY_EBASE];
+    else if (errnum < sys_nerr)
+        return sys_errlist[errnum];
     else 
-        return 0;
+        return "unknown error";
 }
 
 

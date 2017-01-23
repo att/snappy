@@ -42,10 +42,11 @@ static const char *snpy_errmsg_tab[] = {
     [SNPY_EAMBIPLUG - SNPY_EBASE] = "snappy - ambiguous plugin choice",
     [SNPY_ENOPLUG - SNPY_EBASE] = "snappy - no plugin found for the job",
     [SNPY_EINCOMPARG - SNPY_EBASE] = "snappy - incomplete argument",
-    [SNPY_ELOG - SNPY_EBASE] = "snappy - log processing error"
+    [SNPY_ELOG - SNPY_EBASE] = "snappy - log processing error",
+    [SNPY_ERESPOOLFUL - SNPY_EBASE] = "snappy - resource pool full"
 };
 
-int  snpy_strerror(int errnum, char *buf, int buf_size);
+const char*  snpy_strerror(int errnum);
 
 
 #endif

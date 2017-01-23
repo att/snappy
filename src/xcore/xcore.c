@@ -228,10 +228,8 @@ int main(int argc, char** argv) {
                 goto free_result;
             }
             if ((rc = proc(conn, cur_id))) {
-                char errmsg[256]="";
-                snpy_strerror(-rc, errmsg, sizeof errmsg);
                 syslog(LOG_ERR, "error in job id: %d, processor %s: %s.\n",
-                       cur_id, proc_name, errmsg);
+                       cur_id, proc_name, snpy_strerror(-rc));
             }
         }
 

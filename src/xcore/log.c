@@ -165,16 +165,14 @@ int log_add_rec(char *log_buf, int log_buf_size, log_rec_t *rec) {
 }
 
 int log_msg_add_errmsg(char *msg_buf, int msg_buf_size, int status) {
-    char errmsg[256]="";
     int msg_buf_len;
     if (!msg_buf) 
-        return -EINVAL;
-    if  (snpy_strerror(status, errmsg, sizeof errmsg))
         return -EINVAL;
     if ((msg_buf_len = strnlen(msg_buf, msg_buf_size)) == msg_buf_size) 
         return -EINVAL;
     int avail_buf_size = msg_buf_size - msg_buf_len;
-    if (snprintf(msg_buf+msg_buf_len, avail_buf_size, "\"errmsg\":\"%s\"", errmsg) 
+    if (snprintf(msg_buf+msg_buf_len, avail_buf_size, 
+                 "\"errmsg\":\"%s\"", snpy_strerror(status)) 
         >= avail_buf_size) {
         msg_buf[msg_buf_len] = 0;
         return -EMSGSIZE;
@@ -214,8 +212,9 @@ int log_add_rec_va(char *log_buf, int log_buf_size, log_rec_t *rec,
     json_setobject(js, "[#][6]", rec_cnt);
     
     char err_buf[256]="";
-    if (rec->status && (!snpy_strerror(rec->status, err_buf, sizeof err_buf))) {
-        json_setstring(js, err_buf, "[#][6].$", rec_cnt, "err_msg");
+    if (rec->status) {
+        json_setstring(js, snpy_strerror(rec->status), 
+                       "[#][6].$", rec_cnt, "err_msg");
     }
     if (msg_val_fmt == NULL) 
         goto close_js;
