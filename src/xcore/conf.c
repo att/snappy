@@ -56,7 +56,8 @@ load_conf_file:
 }
 
 const char *conf_get_xcore_home(void) {
-    return NULL;
+    return ciniparser_getstring(snpy_conf, "xcore:broker_home",
+                                "/var/lib/snappy");
 }
 
 const char *conf_get_plugin_home(void) {

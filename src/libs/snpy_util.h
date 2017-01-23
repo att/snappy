@@ -96,6 +96,18 @@ typedef int64_t s64;
 #define _array_size_chk(arr) 0
 #endif
 
+#define SNPY_PRINT_ARRAY(array, size, fmt, delim) do {  \
+    int i;                                              \
+    for (i = 0; i < size; i++) {                        \
+        printf(fmt, array[i]);                          \
+        if (i == size - 1) {                            \
+            printf("\n");                               \
+        } else {                                        \
+            printf(delim);                              \
+        }                                               \
+    }                                                   \
+} while (0)
+
 int kv_get_sval(const char *key, char *val, int val_size, const char *wd);
 int kv_get_ival(const char *key, int *val, const char *wd);
 int kv_put_sval(const char *key, const char *val, int val_size, const char *wd);
@@ -114,6 +126,8 @@ int snpy_get_json_val(const char *buf, int buf_size,
                       const char *path,
                       void *val, int val_size);
 ssize_t snpy_get_free_spc(const char *path);
+ssize_t snpy_get_free_mem(void);
+ssize_t snpy_get_loadavg(void);
 
 enum {
     SNPY_LOG_NONE,

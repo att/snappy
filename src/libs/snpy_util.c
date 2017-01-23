@@ -494,3 +494,11 @@ ssize_t snpy_get_free_spc(const char *path) {
 
     return sv.f_bsize * sv.f_bfree;
 }
+
+ssize_t snpy_get_free_mem(void) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    long tot_pages = sysconf(_SC_PHYS_PAGES);
+    long avail_pages = sysconf(_SC_AVPHYS_PAGES);
+
+    return page_size * avail_pages;
+}

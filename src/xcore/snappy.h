@@ -112,6 +112,7 @@ enum snpy_error {
     SNPY_ENOPLUG,
     SNPY_EINCOMPARG,
     SNPY_ELOG,
+    SNPY_ERESPOOLFUL,
     SNPY_ELAST
 };
 
