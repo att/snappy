@@ -65,9 +65,38 @@ struct rbd_hdr {
     u64 compress_type;  /* type of compression */
 };
 
-const char* snpy_rbd_strerror(int e) {
+#define SNPY_RBD_EBASE 0x10000
 
-    return json_strerror(e);
+
+enum snpy_rbd_error {
+    SNPY_RBD_ECONF = SNPY_RBD_EBASE,
+    SNPY_RBD_ECONN,
+    SNPY_RBD_EENV,
+    SNPY_RBD_ESNAPCR,
+    SNPY_RBD_ESTAT,
+    SNPY_RBD_ELAST
+};
+
+static const char *snpy_rbd_errmsg_tab[] = {
+    [SNPY_RBD_ECONF - SNPY_RBD_EBASE] = "error parsing rbd conf.",
+    [SNPY_RBD_ECONN - SNPY_RBD_EBASE] = "fail connecting rbd.",
+    [SNPY_RBD_EENV - SNPY_RBD_EBASE] = "job env error/incomplete.",
+    [SNPY_RBD_ESNAPCR - SNPY_RBD_EBASE] = "can not create rbd snapshot.",
+    [SNPY_RBD_ESTAT - SNPY_RBD_EBASE] = "can not get rbd image stat."
+};
+
+const char* snpy_rbd_strerror(int errnum) {
+
+    if (errnum >= JSON_EBASE && errnum < JSON_ELAST) 
+        return json_strerror(errnum);
+    
+    if (errnum >= SNPY_RBD_EBASE && errnum < SNPY_RBD_ELAST) 
+        return snpy_rbd_errmsg_tab[errnum - SNPY_RBD_EBASE];
+    else if (errnum < sys_nerr)
+        return sys_errlist[errnum];
+    else 
+        return "unknown error";
+
 }
 
 int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) ;
@@ -136,20 +165,37 @@ int rbd_conf_init(struct rbd_conf *conf, const char *arg) {
     if (!js)
         return -error;
     int rc = json_loadstring(js, arg);
-    if (rc) {
+    if (rc) 
         goto close_js;
-        return rc;
-    }
+    
     strlcpy(conf->user, json_string(js, ".sp_param.user"), sizeof conf->user);
     strlcpy(conf->mon_host, json_string(js, ".sp_param.mon_host"), sizeof conf->mon_host);
     strlcpy(conf->key, json_string(js, ".sp_param.key"), sizeof conf->key);
     strlcpy(conf->pool, json_string(js, ".sp_param.pool"), sizeof conf->pool);
     strlcpy(conf->image, json_string(js, ".sp_param.image"), sizeof conf->image);
     strlcpy(conf->snap, json_string(js, ".sp_param.snap_name"), sizeof conf->snap);
-
+    return 0;
 close_js:
-    json_close(js);
-    return rc;
+    return -SNPY_RBD_ECONF;
+}
+
+
+static ssize_t get_rbd_alloc_size(rbd_image_t image) {
+    
+    int rc = 0;
+    rbd_image_info_t info;
+    rc = rbd_stat(image, &info, sizeof info);
+    if (rc)
+        return rc;
+    ssize_t alloc_size = 0;
+    if ((rc = rbd_diff_iterate(image, NULL, 0, 
+                               info.size, diff_cb_snap, &alloc_size))) {
+        return rc;
+
+    }   
+    
+    return alloc_size;
+
 }
 
 static int do_snap(const char *arg, int arg_size) {
@@ -161,47 +207,47 @@ static int do_snap(const char *arg, int arg_size) {
     const char* status_msg = NULL;
 
     if ((rc = rbd_conf_init(&conf, arg))) {
-        status = -rc;
-        snpy_logger(SNPY_LOG_ERR, "error getting rbd connection: %d.", status);
+        status = SNPY_RBD_ECONF;
+        snpy_logger(SNPY_LOG_ERR, "error parsing rbd configuration: %d.", rc);
         goto err_out;
     }
 
     if((rc = rbd_data_init(&conf, &rbd))) {
-        status = -rc;
-        snpy_logger(SNPY_LOG_ERR, "error getting rbd connection: %d.", status);
+        status = SNPY_RBD_ECONN;
+        snpy_logger(SNPY_LOG_ERR, "error getting rbd connection: %d.", rc);
         goto err_out;
     }                                           /* allocation point: rbd */
 
     char job_id[32];
     if ((rc = kv_get_sval("meta/id", job_id, sizeof job_id, NULL))) {
-        status = -rc;
-        snpy_logger(SNPY_LOG_ERR, "can not get meta/id: %d.", status);
+        status = SNPY_RBD_EENV;
+        snpy_logger(SNPY_LOG_ERR, "can not get meta/id: %d.", rc);
         goto cleanup_rbd_data;
     }
+
     time_t snap_start = time(NULL);
     char snap_name[64];
     sprintf(snap_name, "snpy-%s", job_id);
     if((rc = rbd_snap_create(rbd.image, snap_name))) {
-        status = -rc;
-        snpy_logger(SNPY_LOG_ERR, "can not create image: %d.", status);
+        status = SNPY_RBD_ESNAPCR;
+        snpy_logger(SNPY_LOG_ERR, "can not create image: %d.", rc);
         goto cleanup_rbd_data;
     }
+    time_t snap_fin = time(NULL);
+
     if(rbd_snap_set(rbd.image, snap_name))  {
         status = -rc;
         goto cleanup_rbd_data;
     }
-    time_t snap_fin = time(NULL);
-    rc = rbd_stat(rbd.image, &rbd.info, sizeof rbd.info);
 
-    size_t alloc_size = 0;
-    size_t est_size = 0;
-    if ((rc = rbd_diff_iterate(rbd.image, NULL, 0, 
-                               rbd.info.size, diff_cb_snap, &alloc_size))) {
-        status = -rc;
-        goto cleanup_rbd_data;              
-    }   
-    est_size = alloc_size;
-
+    if ((rc = rbd_stat(rbd.image, &rbd.info, sizeof rbd.info))) {
+        status = SNPY_RBD_ESTAT;
+        snpy_logger(SNPY_LOG_ERR, "can not get image stat: %d.", rc);
+        goto cleanup_rbd_data;
+    }
+    ssize_t alloc_size = get_rbd_alloc_size(rbd.image);
+    if (alloc_size < 0) 
+        alloc_size = -1;
     /* update arg:
      * 1. set vol_size, alloc_size and snap_name in sp_param object
      * 2. set est_size in top level object.
@@ -222,8 +268,7 @@ static int do_snap(const char *arg, int arg_size) {
         (rc = json_setnumber(js, alloc_size, ".sp_param.alloc_size")) ||
         (rc = json_setnumber(js, snap_start, ".sp_param.snap_start")) ||
         (rc = json_setnumber(js, snap_fin, ".sp_param.snap_fin")) ||
-        (rc = json_setstring(js, snap_name, ".sp_param.snap_name")) ||
-        (rc = json_setnumber(js, est_size, ".sp_param.est_size"))) {
+        (rc = json_setstring(js, snap_name, ".sp_param.snap_name"))) {
         status = rc;
         goto close_js;
     } 
@@ -260,7 +305,7 @@ err_out:
 static int update_export_arg(const char *arg, 
                              time_t export_start, 
                              time_t export_fin) {
-    /* update arg:
+    /* TODO: update arg:
      * 1. set vol_size, alloc_size and snap_name in sp_param object
      * 2. set est_size in top level object.
      */
@@ -667,16 +712,16 @@ static int do_patch(const char *arg, int arg_size) {
 int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) {
     int rc;
     if (!conf ||  !rbd)
-        goto err_out;
+        return -EINVAL;
 
-    if (rados_create(&rbd->cluster, conf->user)) 
+    if ((rc = rados_create(&rbd->cluster, conf->user))) 
         goto err_out;
-    if (rados_conf_set(rbd->cluster, "mon_host", conf->mon_host) ||
-        rados_conf_set(rbd->cluster, "key", conf->key))
+    if ((rc = rados_conf_set(rbd->cluster, "mon_host", conf->mon_host)) ||
+        (rc = rados_conf_set(rbd->cluster, "key", conf->key)))
         goto free_rados_cluster;
-    if (rados_connect(rbd->cluster)) 
+    if ((rc = rados_connect(rbd->cluster))) 
         goto free_rados_cluster;
-    if (rados_ioctx_create(rbd->cluster, conf->pool, &rbd->io_ctx)) 
+    if ((rc = rados_ioctx_create(rbd->cluster, conf->pool, &rbd->io_ctx))) 
         goto free_rados_cluster;
     if ((rc = rbd_open(rbd->io_ctx, conf->image, &rbd->image, NULL))) {
         snpy_logger(SNPY_LOG_ERR, "rbd_data_init: can not open rbd vol: %d", rc);
@@ -692,7 +737,7 @@ free_rados_cluster:
     rados_shutdown(rbd->cluster);
     rbd->cluster = NULL;
 err_out:
-    return 1;
+    return rc;
 }
 
 void rbd_data_destroy(struct rbd_data *rbd) {
