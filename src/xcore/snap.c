@@ -205,23 +205,6 @@ static int get_wd_path(int job_id, char *wd_path, int wd_path_size) {
         return 0;
 }
 
-/* 
- * check_snap_run_state() - sanity check for running snapshot job status
- *
- */
-#if 0
-static int check_snap_run_state(MYSQL *db_conn, snpy_job_t *job) {
-    int wrkdir_fd = open(plugin_env.wd, O_RDONLY);
-    if (wrkdir_fd == -1)  
-        return -errno;
-
-    if (faccessat(wrkdir_fd, "meta/pid", F_OK, 0) == -1) {
-        close(wrkdir_fd);
-        return -errno;
-    }
-    return 0;
-}
-#endif
 static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
     char buf[64];
@@ -268,7 +251,10 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     if (plugin_status) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
-
+        status = SNPY_EPLUG;
+        if (kv_get_sval("meta/status_msg", 
+                         ext_err_msg, sizeof ext_err_msg, wd_path)) 
+            ext_err_msg[0] = 0;
     }
 
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
