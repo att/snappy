@@ -42,16 +42,62 @@ static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
 
 
 
+static int job_validate(MYSQL *db_conn, snpy_job_t *job, 
+                        char *err_msg, int err_msg_size) {
+     /* find argument used for historical job */
+    char hist_job_arg0[4096] = "";
+    int hist_job_id;
+    double js_val;
+    int rc = snpy_get_json_val(job->argv[1], job->argv_size[1], 
+                               ".rstr_to_job_id",
+                               &js_val, sizeof js_val);
+    if (rc) {
+        if (err_msg) 
+            snprintf(err_msg, err_msg_size,
+                     "can not get restore to job id: %d.", rc);
+        return rc;
+    }
+
+    hist_job_id = js_val;
+    rc = db_get_val(db_conn, "arg0", hist_job_id,
+                    hist_job_arg0, sizeof hist_job_arg0);
+    if (rc) {
+        if (err_msg) 
+            snprintf(err_msg, err_msg_size,
+                     "can not get job arg0: %d.", rc);
+        return rc;
+    }
+    if (strcmp(hist_job_arg0, "export")) {
+        if (err_msg) 
+            snprintf(err_msg, err_msg_size,
+                     "restore target job is not export.");
+        
+        return -SNPY_EARG;
+    }
+    return 0;
+
+}
+
 static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
-    int new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_READY);
+    int status = 0;
+    char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
+    int new_state;
+    if(job_validate(db_conn, job, ext_err_msg, sizeof ext_err_msg)) {
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                            SNPY_SCHED_STATE_DONE);
+        status = SNPY_EINVREC;
+       
+    }
 
-    return  snpy_job_update_state(db_conn, job,
-                                  job->id, job->argv[0],
-                                  job->state, new_state,
-                                  0,
-                                  NULL);
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                        SNPY_SCHED_STATE_READY); 
+
+    return snpy_job_update_state(db_conn, job,
+                                 job->id, job->argv[0],
+                                 job->state, new_state,
+                                 status,
+                                 "s", ext_err_msg, sizeof ext_err_msg);
 
 }
 
@@ -82,12 +128,16 @@ static int add_job_get(MYSQL *db_conn, snpy_job_t *job) {
     char hist_job_arg2[4096] = "";
     int hist_job_id;
     double js_val;
-    snpy_get_json_val(job->argv[1], job->argv_size[1], ".rstr_to_job_id",
-                      &js_val, sizeof js_val);
+    rc = snpy_get_json_val(job->argv[1], job->argv_size[1], ".rstr_to_job_id",
+                           &js_val, sizeof js_val);
+    if (rc) 
+        return rc;
+
     hist_job_id = js_val;
-    db_get_val(db_conn, "arg2", hist_job_id, 
-               hist_job_arg2, sizeof hist_job_arg2);
- 
+    rc = db_get_val(db_conn, "arg2", hist_job_id, 
+                    hist_job_arg2, sizeof hist_job_arg2);
+    if (rc)
+        return rc;
 
     /* update sub job */
     if((rc = db_update_job_partial(db_conn, &sub_job)) || 
