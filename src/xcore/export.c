@@ -362,9 +362,12 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     char wd_path[PATH_MAX]="";
     char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
 
-    if (job_get_wd(job->id, wd_path, sizeof wd_path)) {
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-        status = SNPY_EBADJ; 
+    if ((rc = job_get_wd(job->id, wd_path, sizeof wd_path))) {
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, 
+                                            SNPY_SCHED_STATE_DONE);
+        status = SNPY_EBADJ;
+        snprintf(ext_err_msg, sizeof ext_err_msg,
+                 "working directory path too long, code: %d.", rc);
         goto change_state;
     }
 

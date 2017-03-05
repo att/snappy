@@ -231,7 +231,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     log_rec_t log_rec;
 
     char wd_path[PATH_MAX]="";
-    char msg[SNPY_LOG_MSG_SIZE]="";
+    char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
 
     if (get_wd_path(job->id, wd_path, sizeof wd_path)) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
@@ -242,7 +242,9 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
                
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-        status = SNPY_EBADJ; 
+        status = SNPY_EBADJ;
+        snprintf(ext_err_msg, sizeof ext_err_msg, 
+                 "failed getting plugin pid: %d", rc);
         goto change_state;
     }
     rc = waitpid(pid, NULL,WNOHANG);
@@ -251,14 +253,24 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     
     
     char arg_out[4096];
-    
-    if ((rc = kv_get_ival("meta/status", &status, wd_path)) ||
+    int plugin_status;
+    if ((rc = kv_get_ival("meta/status", &plugin_status, wd_path)) ||
         (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EBADJ;
+        snprintf(ext_err_msg, sizeof ext_err_msg, 
+                 "failed getting plugin status or arg.out: %d", rc);
         goto change_state;
     }
+
+    /* plugin failure */
+    if (plugin_status) {
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                            SNPY_SCHED_STATE_DONE);
+
+    }
+
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
@@ -275,7 +287,7 @@ change_state:
                                   job->id, job->argv[0],
                                   job->state, new_state,
                                   status,
-                                  NULL);
+                                  "s", "ext_err_msg", ext_err_msg);
 
     return 0;
 }
