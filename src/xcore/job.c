@@ -315,6 +315,10 @@ int snpy_job_update_state(MYSQL *db_conn, const snpy_job_t *job,
         return -EMSGSIZE;
     if (job->log && strlcpy(log_buf, job->log, sizeof log_buf) >= sizeof log_buf)
         return -EMSGSIZE;
+    
+    if (status == 0) {
+        msg_val_fmt = NULL;
+    }
 
     va_list ap;
     va_start(ap, msg_val_fmt);
