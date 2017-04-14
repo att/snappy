@@ -52,7 +52,7 @@ container=$($json_cmd -f meta/arg string .tp_param.container)
 
 echo "execute command: $cmd" >> meta/log
 
-swift_cmd="swift -q --os-auth-url=$auth_url --os-username=$user --os-password=$passwd --os-tenant-name=$tenant --os-region-name=RegionOne"
+swift_cmd="swift -q --os-auth-url=$auth_url --os-username=$user --os-password=$passwd --os-tenant-name=$tenant "
 
 
 start_time=`date +%s`
