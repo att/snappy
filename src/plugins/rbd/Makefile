@@ -1,7 +1,7 @@
 TARGET = snpy_rbd
 
 SNPY_LIB = ../../libs/libsnpy.a
-LIBS = -static-libgcc -Wl,-Bstatic -lsnpy -lrados -lrbd -lboost_system -lboost_thread -lcrypto++  -lstdc++  -Wl,-Bdynamic  -lpthread -lm -ldl
+LIBS = -static-libgcc -Wl,-Bstatic -lsnpy -lrados -lrbd -lboost_system -lboost_thread -lboost_iostreams -lboost_random -lcrypto++  -lstdc++ -lz -Wl,-Bdynamic  -lpthread -lm -ldl
 #LIBS = -lrados -lrbd -lboost_system -lboost_thread -lcryptopp -lstdc++ -lpthread -lm -ldl
 CC = gcc
 CFLAGS = -g -Wall -Wno-unused-variable -Wno-unused-function  -I/opt/ceph/usr/include -I../../libs/

@@ -713,12 +713,12 @@ int rbd_data_init(struct rbd_conf *conf, struct rbd_data *rbd) {
     int rc;
     if (!conf ||  !rbd)
         return -EINVAL;
-
     if ((rc = rados_create(&rbd->cluster, conf->user))) 
         goto err_out;
     if ((rc = rados_conf_set(rbd->cluster, "mon_host", conf->mon_host)) ||
-        (rc = rados_conf_set(rbd->cluster, "key", conf->key)))
+       (rc = rados_conf_set(rbd->cluster, "key", conf->key)))
         goto free_rados_cluster;
+
     if ((rc = rados_connect(rbd->cluster))) 
         goto free_rados_cluster;
     if ((rc = rados_ioctx_create(rbd->cluster, conf->pool, &rbd->io_ctx))) 
