@@ -87,17 +87,17 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_DONE);
         status = SNPY_EINVREC;
-       
+        goto change_state;
     }
 
     new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                         SNPY_SCHED_STATE_READY); 
-
+change_state:
     return snpy_job_update_state(db_conn, job,
                                  job->id, job->argv[0],
                                  job->state, new_state,
                                  status,
-                                 "s", ext_err_msg, sizeof ext_err_msg);
+                                 "s", "ext_err_msg", ext_err_msg);
 
 }
 

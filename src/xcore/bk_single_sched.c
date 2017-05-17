@@ -129,7 +129,7 @@ static int add_job_instance(MYSQL *db_conn, snpy_job_t *job) {
     
    
     /* update sub job */
-    rc = db_update_job_partial(db_conn, &sub_job) || 
+    rc = db_update_job_partial(db_conn, &sub_job) ||
          db_update_str_val(db_conn, "feid", sub_job.id, job->feid) ||
          db_update_str_val(db_conn, "arg0", sub_job.id, sub_proc_name) ||
          db_update_str_val(db_conn, "arg2", sub_job.id, job->argv[2]) ||
@@ -137,7 +137,7 @@ static int add_job_instance(MYSQL *db_conn, snpy_job_t *job) {
          snpy_job_update_state(db_conn, &sub_job,
                                job->id, job->argv[0],
                                0, SNPY_SCHED_STATE_CREATED,
-                               0, NULL); 
+                               0, NULL);
     return rc;
 
 }
