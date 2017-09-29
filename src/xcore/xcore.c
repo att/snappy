@@ -128,11 +128,10 @@ static int init_signal_handler(void) {
 
 static int xcore_init(void) {
     
-    openlog ("snappy", LOG_CONS | LOG_PID | LOG_NDELAY |LOG_PERROR, LOG_LOCAL0);
+    openlog ("snappy", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
     syslog(LOG_INFO, "Broker starting...");
     syslog(LOG_INFO, "Config signal handlers..");
     if (init_signal_handler()) {
-
         goto err_out;
     }
     syslog(LOG_INFO, "Loading config file..");
@@ -170,7 +169,8 @@ static void sigchld_handler (int sig, siginfo_t *siginfo, void *context) {
 int main(int argc, char** argv) {
 
     xcore_init();
-
+    
+    daemon(1, 1);
 
     sigset_t block_sigchld;
     sigemptyset(&block_sigchld);
@@ -228,8 +228,8 @@ int main(int argc, char** argv) {
                 goto free_result;
             }
             if ((rc = proc(conn, cur_id))) {
-                syslog(LOG_ERR, "error in job id: %d, processor %s: %s.\n",
-                       cur_id, proc_name, snpy_strerror(-rc));
+                syslog(LOG_ERR, "error in job id: %d, processor %s: %d, %s.\n",
+                       cur_id, proc_name, rc, snpy_strerror(-rc));
             }
         }
 
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
                     syslog(LOG_DEBUG, "collected i/o job id: %d, pid: %d.\n", 
                            WEXITSTATUS(status), chld_pid);
                 } else if (chld_pid == 0) {
-                    printf("no zombie process.\n");
+                    syslog(LOG_DEBUG, "no zombie process.\n");
                     break;
                 } else if (errno == ECHILD) {
                     break;
