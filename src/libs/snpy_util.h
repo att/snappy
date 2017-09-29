@@ -142,5 +142,6 @@ enum {
 int snpy_logger_open(const char *log_fn, int flag);
 int snpy_logger(int priority, const char *fmt, ...);
 void snpy_logger_close(int flag);
+void *xmalloc (size_t n);
 #endif
 

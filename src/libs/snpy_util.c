@@ -502,3 +502,13 @@ ssize_t snpy_get_free_mem(void) {
 
     return page_size * avail_pages;
 }
+
+void * xmalloc (size_t n) {
+    void *p = malloc (n);
+    if (!p && n != 0) {
+        fprintf(stderr, "out of memory.\n");
+        abort();
+    }
+    return p;
+}
+
