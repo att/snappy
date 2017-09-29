@@ -419,11 +419,13 @@ static int do_export(const char *arg, int arg_size) {
         goto err_out;
     }
     char job_id[32];
-    if (kv_get_sval("meta/id", job_id, sizeof job_id, NULL)) {
+    if ((rc = kv_get_sval("meta/id", job_id, sizeof job_id, NULL))) {
+        snpy_logger(SNPY_LOG_ERR, "missing meta/id file: %d", rc);
         status = -rc;
         goto cleanup_rbd_data;
     }
     if((rc = rbd_stat(rbd.image, &rbd.info, sizeof rbd.info))) {
+        snpy_logger(SNPY_LOG_ERR, "error get rbd image info: %d", rc);
         status = -rc;
         goto cleanup_rbd_data;
     }
@@ -437,6 +439,7 @@ static int do_export(const char *arg, int arg_size) {
     /* prepare export call back function write buffer */
     char *buf = malloc(rbd.info.obj_size);
     if (!buf) {
+        snpy_logger(SNPY_LOG_ERR, "can not calloc write call-back function buffer");
         status = ENOMEM;
         goto cleanup_rbd_data;
     }
@@ -466,6 +469,7 @@ static int do_export(const char *arg, int arg_size) {
     struct blk_map *bm = blk_map_alloc(4096);
     if (!bm) {
         status = ENOMEM;
+        snpy_logger(SNPY_LOG_ERR, "can not alloc export data block map");
         goto close_data_fd;
     }
 
@@ -648,10 +652,10 @@ static int do_import(const char *arg, int arg_size) {
     }
 
     /* read out block map */
-    lseek(data_fd, hdr.blk_map_offset, SEEK_SET);
+    off_t offset = lseek(data_fd, hdr.blk_map_offset, SEEK_SET);
     struct blk_map *bm;
     if ((rc = blk_map_read(data_fd, &bm))) {
-        snpy_logger(SNPY_LOG_ERR, "error read rbd header: %d.", rc);
+        snpy_logger(SNPY_LOG_ERR, "error read block map: %d.", rc);
         goto close_data_fd;
     }                                       /* RAII point */
     /* TODO: sanity check for blk_map */
@@ -748,7 +752,6 @@ void rbd_data_destroy(struct rbd_data *rbd) {
 
 int main(void) {
     int rc;
-    
     char cmd[32];
     char arg[4096];
     char id_buf[64];
