@@ -197,16 +197,24 @@ int db_check_sub_job_done(MYSQL *db_conn, int job_id) {
     int rc;
     MYSQL_RES *res = NULL;
     MYSQL_ROW row;
-    if ( (rc= mysql_query(db_conn, sql_query_buf)) ||
-         !(res = mysql_store_result(db_conn)) ||
-         !(row = mysql_fetch_row(res))) {
+
+    rc = mysql_query(db_conn, sql_query_buf);
+    if (rc) 
+        return 0;
+    res = mysql_store_result(db_conn);
+    if (res == NULL) {
+        return 0;
+    }
+    row = mysql_fetch_row(res);
+    if (row == NULL) {
         mysql_free_result(res);
-        return -1;
+        return 0;
     }
      
     int cnt = atoi(row[0]);
-        
+    mysql_free_result(res);    
     return cnt;
+    
 
 }
 

@@ -36,9 +36,9 @@ typedef struct snappy_db_conf {
 MYSQL* create_mysql_conn (snappy_db_conf_t * info, MYSQL *db_conn) ;
 
 int db_conn_init(void);
-MYSQL*  db_get_conn(void) ;
+MYSQL*  db_get_conn(void);
 
-int db_exec_sql(MYSQL *db_conn, int flags, 
+int db_exec_sql(MYSQL *db_conn, int flags,
                 unsigned long long *row_cnt, int row_cnt_size, 
                 const char *sql_fmt_str, ...);
 
