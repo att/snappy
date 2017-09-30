@@ -59,3 +59,10 @@ job_proc_t proc_get_job_proc(const char *proc_name) {
 }
 
 
+
+
+int proc_term_dflt(MYSQL *db_conn, snpy_job_t *job) {
+
+    return db_update_int_val(db_conn, "done", job->id, 1);
+}
+

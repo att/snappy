@@ -39,7 +39,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_done(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 static int job_check_ready(MYSQL *db_conn, snpy_job_t *job, int *error);
 
@@ -184,17 +184,21 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
     }
     
     /* snapshot job exist */
-    int snap_done, snap_result;
+    int snap_state, snap_result;
     int snap_job_id = job->sub;
     int snap_job_next;
     rc = db_get_ival(db_conn, "next", snap_job_id, &snap_job_next) ||
-        db_get_ival(db_conn, "done", snap_job_id, &snap_done) ||
+        db_get_ival(db_conn, "state", snap_job_id, &snap_state) ||
         db_get_ival(db_conn, "result", snap_job_id, &snap_result);
     if (rc) 
         return rc;
 
-    if (!snap_done)
+    /* check if snap shot entered terminated or done state */
+    if (!(snap_state & 
+          (BIT(SNPY_STATE_BIT_TERM) | BIT(SNPY_STATE_BIT_DONE))
+         )) {
         return -EBUSY;
+    }
     /* snapshot job is done */
     if (snap_result) {  /* snapshot sub job error */
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
@@ -288,7 +292,7 @@ static int proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
     return rc;
 
 }
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
 
     return 0;
 }
@@ -324,7 +328,6 @@ int bk_single_full_proc (MYSQL *db_conn, int job_id) {
         break;
 
     case SNPY_SCHED_STATE_DONE:
-        proc_done(db_conn, job);
         break;  /* shouldn't be here*/
 
     case SNPY_SCHED_STATE_READY:
@@ -335,8 +338,8 @@ int bk_single_full_proc (MYSQL *db_conn, int job_id) {
        proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        proc_term(db_conn, job);
         break;
     }
     

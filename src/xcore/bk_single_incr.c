@@ -35,7 +35,7 @@ static void proc_created(MYSQL *db_conn, snpy_job_t *job);
 static void proc_done(MYSQL *db_conn, snpy_job_t *job);
 static void proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static void proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static void proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static void proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 
 static void proc_created(MYSQL *db_conn, snpy_job_t *job) {
@@ -54,7 +54,7 @@ static void proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
 
     return;
 }
-static void proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static void proc_term(MYSQL *db_conn, snpy_job_t *job) {
 
     return;
 }
@@ -97,8 +97,8 @@ int bk_single_incr_proc (MYSQL *db_conn, int job_id) {
        proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        proc_term(db_conn, job);
         break;
     }
     

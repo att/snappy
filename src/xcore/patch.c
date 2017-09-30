@@ -36,7 +36,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_done(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 
 static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
@@ -103,7 +103,7 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
         return rc;
 
     /* update job status */
-    int new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_ZOMBIE);
+    int new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
     if ((rc = db_update_int_val(db_conn, "state", job->id, new_state)) ||
         (rc = db_update_int_val(db_conn, "sub", job->id, sub_job.id)))
         return rc;
@@ -156,7 +156,7 @@ static int proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
     return 0;
 
 }
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
 
     return 0;
 }
@@ -199,8 +199,8 @@ int patch_proc (MYSQL *db_conn, int job_id) {
        proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        proc_term(db_conn, job);
         break;
     }
     

@@ -45,7 +45,7 @@ static int proc_created(MYSQL *db_conn, const snpy_job_t *job);
 static int proc_done(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 static int sched_conf_init(struct bk_single_sched_conf *conf, 
                            const char *arg, int arg_size);
@@ -337,7 +337,7 @@ static int proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
     return rc;
 }
 
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
     if (db_check_sub_job_done(db_conn, job->id)) {
         int rc;
         int sched_state = SNPY_SCHED_STATE_DONE;
@@ -388,8 +388,8 @@ int bk_single_sched_proc  (MYSQL *db_conn, int job_id) {
         rc = proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        rc = proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        rc = proc_term(db_conn, job);
         break;
     }
 

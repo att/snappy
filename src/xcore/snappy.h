@@ -60,7 +60,7 @@ enum snpy_state_bit {
     SNPY_STATE_BIT_READY = 2,
     SNPY_STATE_BIT_RUN = 3,
     SNPY_STATE_BIT_BLOCKED = 4,
-    SNPY_STATE_BIT_ZOMBIE = 5
+    SNPY_STATE_BIT_TERM = 5
 }; 
 
 #define BIT(nr) (1UL << (nr))
@@ -79,7 +79,7 @@ enum snpy_job_sched_state {
     SNPY_SCHED_STATE_READY = 1 << SNPY_STATE_BIT_READY,
     SNPY_SCHED_STATE_RUN = 1 << SNPY_STATE_BIT_RUN,
     SNPY_SCHED_STATE_BLOCKED = 1 << SNPY_STATE_BIT_BLOCKED,
-    SNPY_SCHED_STATE_ZOMBIE = 1 << SNPY_STATE_BIT_ZOMBIE
+    SNPY_SCHED_STATE_TERM = 1 << SNPY_STATE_BIT_TERM
 };
 
 static const char * job_state_msg[] = {
@@ -88,7 +88,7 @@ static const char * job_state_msg[] = {
     "ready",
     "running",
     "blocked",
-    "zombie"
+    "terminated"
 };
 
 #define SNPY_EBASE 0x1c61862a

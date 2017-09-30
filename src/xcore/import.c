@@ -56,7 +56,7 @@ struct plugin_env {
 static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 static int export(snpy_job_t *job);
 
@@ -430,11 +430,11 @@ change_state:
 }
 
 /*
- * proc_zombie() - handles zombie state
+ * proc_term() - handles term state
  *
  */
 
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
 
     return 0;
 }
@@ -495,8 +495,8 @@ int import_proc (MYSQL *db_conn, int job_id) {
         status = proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        status = proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        status = proc_term(db_conn, job);
         break;
     default:
         status = SNPY_ESTATJ;

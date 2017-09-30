@@ -252,11 +252,8 @@ int log_add_rec_va(char *log_buf, int log_buf_size, log_rec_t *rec,
     goto close_js;
 js_error:
     json_leave(js, &xs);
-    printf("%d: %s\n", error, json_strerror(error));
 close_js: 
     json_printstring(js, log_buf, log_buf_size, 0, &error);
-    if (rc) 
-        printf("%d: %s\n", error, json_strerror(error));
     json_close(js);                                                                           
     return rc;                                                                                
 } 
@@ -300,8 +297,6 @@ int log_get_val_by_path(const char *log_buf, int log_buf_size,
     }
 
  close_js: 
-    if (status) 
-        printf("%d: %s\n", status, json_strerror(status));
     json_close(js);                                                                           
     return -status;   
 }

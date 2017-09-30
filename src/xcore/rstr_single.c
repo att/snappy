@@ -38,7 +38,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_done(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 
 
@@ -257,7 +257,7 @@ static int proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
 
 }
 
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
 
     return 0;
 }
@@ -297,8 +297,8 @@ int rstr_single_proc (MYSQL *db_conn, int job_id) {
        proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        proc_term(db_conn, job);
         break;
     }
     

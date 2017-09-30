@@ -53,7 +53,7 @@ struct plugin_env {
 static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 static int snap_env_init(snpy_job_t *job) ;
 
@@ -143,7 +143,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
         status = SNPY_EENVJ;
         
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         goto change_state;
     }
 
@@ -152,7 +152,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if (pid < 0) {
        status = SNPY_ESPAWNJ;
        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                           SNPY_SCHED_STATE_DONE);
+                                           SNPY_SCHED_STATE_TERM);
        goto change_state;
     }
 
@@ -171,7 +171,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
         (rc = kv_put_ival("meta/pid", pid, wd_path))) {
         status = SNPY_EBADJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         goto change_state;
     }
 
@@ -217,30 +217,30 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
 
     if (get_wd_path(job->id, wd_path, sizeof wd_path)) {
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         goto change_state;
     }
 
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
                
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         snprintf(ext_err_msg, sizeof ext_err_msg, 
                  "failed getting plugin pid: %d", rc);
         goto change_state;
     }
-    rc = waitpid(pid, NULL,WNOHANG);
+    rc = waitpid(pid, NULL, WNOHANG);
     if (rc == 0 || (rc == -1 && errno != ECHILD)) 
         return 0; 
     
     
     char arg_out[4096];
-    int plugin_status;
-    if ((rc = kv_get_ival("meta/status", &plugin_status, wd_path)) ||
+    int plugin_job_status;
+    if ((rc = kv_get_ival("meta/status", &plugin_job_status, wd_path)) ||
         (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         snprintf(ext_err_msg, sizeof ext_err_msg, 
                  "failed getting plugin status or arg.out: %d", rc);
@@ -248,9 +248,9 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     }
 
     /* plugin failure */
-    if (plugin_status) {
+    if (plugin_job_status) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EPLUG;
         if (kv_get_sval("meta/status_msg", 
                          ext_err_msg, sizeof ext_err_msg, wd_path)) 
@@ -259,13 +259,13 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
 
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EDBCONN;
         goto change_state;
     }
     /* snapshot complete successfully */
     status = 0;
-    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
 
     
 change_state:
@@ -275,78 +275,38 @@ change_state:
                                   status,
                                   "s", "ext_err_msg", ext_err_msg);
 
-    return 0;
 }
 
 /*
- * proc_read() - handles ready state
+ * proc_term() - handles term state
  *
  */
 
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
-    
-    char *arg_buf;
-    
-    
-#if 0     
-    snpy_job_t next_job;
-    if (job->sub != 0) 
+    int status;
+    int new_state;
+    char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
+    if (!job)
         return -EINVAL;
-    if ((rc = db_insert_new_job(db_conn)) < 0)  
-        return rc;
-    next_job.id = rc;
-    next_job.sub = 0; next_job.next = 0; next_job.parent = job->parent;
-    next_job.grp = job->grp; next_job.root = job->root;
-    next_job.state = SNPY_SCHED_STATE_CREATED;
-    next_job.result = 0;
-    next_job.policy = BIT(0) | BIT(2); /* arg0, arg2 */
+  
+    /* harvesting put job status */
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
     
-    /* setting up log */
-    struct log_rec next_log_rec = {
-        .id = job->id,
-        .old_state = 0,
-        .new_state = next_job.state,
-        .timestamp = time(NULL),
-        .res_code = 0,
-        .res_msg = "ok",
-        .extra = ""
-    };
-    char log_buf[SNPY_LOG_SIZE] = "";
-    if((rc = log_add_rec(log_buf, sizeof log_buf, &next_log_rec)))
-        return rc;
-
-    /* update sub job */
-    if((rc = db_update_job_partial(db_conn, &next_job)) || 
-       (rc = db_update_str_val(db_conn, "feid", next_job.id, job->feid)) ||
-       (rc = db_update_str_val(db_conn, "arg0", next_job.id, "export")) ||
-       (rc = db_update_str_val(db_conn, "arg2", next_job.id, job->argv[2])) ||
-       (rc = db_update_str_val(db_conn, "log", next_job.id, log_buf)))
-        
-        return rc;
-
-    /* update job status */
-    int new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-    if ((rc = db_update_int_val(db_conn, "state", job->id, new_state)) ||
-        (rc = db_update_int_val(db_conn, "next", job->id, next_job.id)))
-        return rc;
-
-    log_rec_t log_rec = {
-        .id = job->id,
-        .old_state = job->state,
-        .new_state = new_state,
-        .timestamp = time(NULL),
-        .res_code = 0,
-        .res_msg = "ok",
-        .extra = ""
-    };
-
-    memcpy(log_buf, job->log, job->log_size);
-    if ((rc = log_add_rec(log_buf, sizeof log_buf, &log_rec)) ||
-        (rc = db_update_str_val(db_conn, "log", job->id, log_buf)))
-        return rc;
-#endif
-    return 0;
+    char wd[PATH_MAX] = "";
+    if (!get_wd_path(job->id, wd, PATH_MAX)) {
+        /*
+        if (rmdir_recurs(wd)) {
+            syslog(LOG_ERR, "error clearing workspace for job id %d.",
+                   job->id);
+        }
+        */
+    }
+    return  snpy_job_update_state(db_conn, job,
+                                  job->id, job->argv[0],
+                                  job->state, new_state,
+                                  job->result,
+                                  "s", "ext_err_msg", ext_err_msg);
 
 }
 
@@ -406,8 +366,8 @@ int snap_proc (MYSQL *db_conn, int job_id) {
         status = proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        status = proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        status = proc_term(db_conn, job);
         break;
     default:
         status = SNPY_ESTATJ;

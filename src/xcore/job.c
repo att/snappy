@@ -319,7 +319,7 @@ int snpy_job_update_state(MYSQL *db_conn, const snpy_job_t *job,
     if (status == 0) {
         msg_val_fmt = NULL;
     }
-
+    
     va_list ap;
     va_start(ap, msg_val_fmt);
     if ((rc = log_add_rec_va(log_buf, sizeof log_buf, &rec, msg_val_fmt, ap))) {

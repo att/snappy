@@ -58,7 +58,7 @@ struct plugin_env {
 static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 static int plugin_chooser(snpy_job_t *job, struct plugin **pi); 
 
@@ -229,7 +229,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
         /* handling error */
         status = SNPY_EENVJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
 
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "env init error, code: %d.", rc);
@@ -240,7 +240,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if (pid < 0) {
        status = SNPY_ESPAWNJ;
        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                           SNPY_SCHED_STATE_DONE);
+                                           SNPY_SCHED_STATE_TERM);
        snprintf(ext_err_msg, sizeof ext_err_msg,
                 "fork error, code: %d.", rc);
        goto change_state;
@@ -265,7 +265,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_put_ival("meta/pid", pid, wd))) {
         status = SNPY_EBADJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
 
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "can not set meta/pid, code: %d.", rc);
@@ -360,7 +360,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
 
     if ( (rc = job_get_wd(job->id, wd_path, sizeof wd_path))) {
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ; 
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "error getting working dir, code: %d.", rc);
@@ -369,7 +369,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
 
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
                
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "get plugin pid error, code: %d.", rc);
@@ -386,7 +386,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_get_ival("meta/status", &status, wd_path)) ||
         (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
 
         snprintf(ext_err_msg, sizeof ext_err_msg,
@@ -396,7 +396,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
 
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EDBCONN;
         goto change_state;
     }
@@ -405,14 +405,14 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     rc = add_job_import(db_conn, job); /*add put job as the next job */
     if (rc) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EDBCONN;
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "error add put job as the sub job: %d.", rc); 
         goto change_state;
     }
 
-    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_ZOMBIE);
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
     status = 0;
     
 change_state:
@@ -424,38 +424,43 @@ change_state:
 }
 
 /*
- * proc_zombie() - waiting for put job to finish
+ * proc_term() - waiting for put job to finish
  *
  */
 
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
     int status;
     int new_state;
     char ext_err_msg[256]="";
-    if (!job || !job->sub)
+    if (!job) {
         return -EINVAL;
-    int import_done=0, import_result=0;
-    rc = db_get_ival(db_conn, "done", job->sub, &import_done) || 
-        db_get_ival(db_conn, "result", job->sub, &import_result);
-    if (rc) {
-        status = SNPY_EDBCONN;
-        snprintf(ext_err_msg, sizeof ext_err_msg,
-                 "error getting import status: %d.", rc);
-        goto err_out;
-    }
-  
-    if (!import_done)
-        return 0;
-    
-    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-    if (import_result) {
-        status = SNPY_ESUB;
-        snprintf(ext_err_msg, sizeof ext_err_msg,
-                 "error in sub job with id: %d.", job->sub);
     }
 
-err_out:
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+    status = job->result;
+    /* if there is a sub job, check sub status */
+    if (job->sub) {
+        int import_done=0, import_result=0;
+        rc = db_get_ival(db_conn, "done", job->sub, &import_done) || 
+            db_get_ival(db_conn, "result", job->sub, &import_result);
+        if (rc) {
+            snprintf(ext_err_msg, sizeof ext_err_msg,
+                     "error getting import status: %d.", rc);
+            return -SNPY_EDBCONN;
+        }
+
+        if (!import_done)
+            return 0;
+
+        if (import_result) {
+            status = SNPY_ESUB;
+            snprintf(ext_err_msg, sizeof ext_err_msg,
+                     "error in sub job with id: %d.", job->sub);
+        }
+
+    }
+
     return  snpy_job_update_state(db_conn, job,
                                   job->id, job->argv[0],
                                   job->state, new_state,
@@ -477,6 +482,8 @@ static int proc_blocked(MYSQL *db_conn, snpy_job_t *job) {
     return 0;
 
 }
+
+
 
 /*
  * return:
@@ -517,8 +524,8 @@ int get_proc (MYSQL *db_conn, int job_id) {
         status = proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        status = proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        status = proc_term(db_conn, job);
         break;
     default:
         status = SNPY_ESTATJ;
@@ -532,7 +539,6 @@ int get_proc (MYSQL *db_conn, int job_id) {
         rc = mysql_commit(db_conn);
     else 
         rc = mysql_rollback(db_conn);
-
     return rc?1:(-status);
 }
 

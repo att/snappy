@@ -58,7 +58,7 @@ struct plugin_env {
 static int proc_created(MYSQL *db_conn, snpy_job_t *job);
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job);
 static int proc_blocked(MYSQL *db_conn, snpy_job_t *job);
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job);
+static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 
 static int plugin_chooser(snpy_job_t *job, struct plugin **pi); 
@@ -238,7 +238,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
         /* handling error */
         status = SNPY_EENVJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         rc = log_msg_add_errmsg(msg, sizeof msg, status);
         goto change_state;
     }
@@ -247,7 +247,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if (pid < 0) {
        status = SNPY_ESPAWNJ;
        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                           SNPY_SCHED_STATE_DONE);
+                                           SNPY_SCHED_STATE_TERM);
        log_msg_add_errmsg(msg, sizeof msg, status);
        goto change_state;
     }
@@ -266,7 +266,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_put_ival("meta/pid", pid, wd))) {
         status = SNPY_EBADJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         log_msg_add_errmsg(msg, sizeof msg, status);
         goto change_state;
     }
@@ -364,7 +364,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
 
     if ((rc = job_get_wd(job->id, wd_path, sizeof wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, 
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "working directory path too long, code: %d.", rc);
@@ -373,7 +373,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
 
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
                
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "get plugin pid error, code: %d.", rc);
@@ -390,7 +390,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_get_ival("meta/status", &status, wd_path)) ||
         (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
 
         snprintf(ext_err_msg, sizeof ext_err_msg,
@@ -400,7 +400,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
 
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EDBCONN;
         goto change_state;
     }
@@ -409,11 +409,11 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     rc = add_job_put(db_conn, job); /*add put job as the next job */
     if (rc) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EPROC;
         goto change_state;
     }
-    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_ZOMBIE);
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
     status = 0;
     
 change_state:
@@ -424,40 +424,50 @@ change_state:
                                   "s", "ext_err_msg", ext_err_msg);
 }
 
+
+
 /*
- * proc_zombie() - waiting for put job to finish
+ * proc_term() - waiting for put job to finish
  *
  */
 
-static int proc_zombie(MYSQL *db_conn, snpy_job_t *job) {
+static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
     int status;
     int new_state;
-    char msg[SNPY_LOG_MSG_SIZE]="";
+    char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
     if (!job || !job->next)
         return -EINVAL;
     int put_done=0, put_result=0;
     rc = db_get_ival(db_conn, "done", job->next, &put_done) || 
         db_get_ival(db_conn, "result", job->next, &put_result);
-    if (rc) 
+    /* can not getting put status, try again later */
+    if (rc)
         return rc;
   
+    /* upload still running */
     if (!put_done)
         return 0;
     
+    /* harvesting put job status */
     new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
     if (put_result) {
         status = SNPY_ENEXT;
     }
-    if (status) 
-        log_msg_add_errmsg(msg, sizeof msg, status);
-
+    
+    char wd[PATH_MAX] = "";
+    if (!job_get_wd(job->id, wd, PATH_MAX)) {
+        if (rmdir_recurs(wd)) {
+            syslog(LOG_ERR, "error clearing workspace for job id %d.",
+                   job->id);
+        }
+    }
 
     return  snpy_job_update_state(db_conn, job,
                                   job->id, job->argv[0],
                                   job->state, new_state,
-                                  status,
-                                  NULL);
+                                  job->result,
+                                  "s", "ext_err_msg", ext_err_msg);
 }
 
 /* 
@@ -516,8 +526,8 @@ int export_proc (MYSQL *db_conn, int job_id) {
         status = proc_blocked(db_conn, job);
         break;
 
-    case SNPY_SCHED_STATE_ZOMBIE:
-        status = proc_zombie(db_conn, job);
+    case SNPY_SCHED_STATE_TERM:
+        status = proc_term(db_conn, job);
         break;
     default:
         status = SNPY_ESTATJ;
