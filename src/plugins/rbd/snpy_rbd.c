@@ -629,7 +629,7 @@ static int do_import(const char *arg, int arg_size) {
     }
     
     /* allocation buffer */
-    size_t buf_size = 4*(1<<10);
+    size_t buf_size = 4*(1<<20);
     char *buf = malloc(buf_size);   
     if (!buf) {
         status = ENOMEM;
