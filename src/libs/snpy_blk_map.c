@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -18,36 +19,38 @@ struct blk_map *blk_map_alloc(size_t n) {
 
 
 
-int blk_map_add(struct blk_map *bm, u64 off, u64 len) {
-   if (!bm || !bm->nalloc || (bm->nuse > bm->nalloc))
-       return -EINVAL;
+int blk_map_add(struct blk_map **bm, u64 off, u64 len) {
+    if (!bm || (!*bm) || !(*bm)->nalloc || ((*bm)->nuse > (*bm)->nalloc))
+        return -EINVAL;
 
 
-   /* add initial segment */
-   if (bm->nuse == 0) {
-       bm->segv[0].off = off;
-       bm->segv[0].len = len;
-       bm->nuse = 1;
-       return 0;
-   } 
-   
-   /* can it be merged into existing segment?  */
-   if (bm->segv[bm->nuse - 1].off + bm->segv[bm->nuse - 1].len == off) {
-       bm->segv[bm->nuse - 1].len += len;
-   } else {
-       if (bm->nuse == bm->nalloc) {    /* resize needed */
-            void *p = realloc(bm, bm->nalloc << 1);
+    /* add initial segment */
+    if ((*bm)->nuse == 0) {
+        (*bm)->segv[0].off = off;
+        (*bm)->segv[0].len = len;
+        (*bm)->nuse = 1;
+        return 0;
+    } 
+
+    /* can it be merged into existing segment?  */
+    if ((*bm)->segv[(*bm)->nuse - 1].off + (*bm)->segv[(*bm)->nuse - 1].len == off) {
+        (*bm)->segv[(*bm)->nuse - 1].len += len;  /* merge the segment */
+    } else {
+        if ((*bm)->nuse == (*bm)->nalloc) {    /* resize needed */
+            size_t new_size = 
+                sizeof(**bm) + ((*bm)->nalloc << 1)  * (sizeof (*bm)->segv[0]);
+
+            void *p = realloc((*bm), new_size);
             if (!p) 
                 return -ENOMEM;
-            bm = p; 
-            bm->nalloc <<= 1;
-       }
-       bm->segv[bm->nuse].off = off;
-       bm->segv[bm->nuse].len = len;
-       bm->nuse ++;
-   }
-
-   return 0;
+            (*bm) = p;
+            (*bm)->nalloc <<= 1;
+        }
+        (*bm)->segv[(*bm)->nuse].off = off;
+        (*bm)->segv[(*bm)->nuse].len = len;
+        (*bm)->nuse ++;
+    }
+    return 0;
 }
 
 
@@ -57,7 +60,7 @@ int blk_map_add(struct blk_map *bm, u64 off, u64 len) {
  */
 
 int blk_map_write(int fd, struct blk_map *bm) {
-    if (!bm)
+    if (!bm || fd < 0)
         return -EINVAL;
 
     size_t size = (sizeof bm->nuse) + bm->nuse * (sizeof bm->segv[0]);
@@ -68,14 +71,17 @@ int blk_map_write(int fd, struct blk_map *bm) {
     return 0;
 }
 
+/* blk_map_read() - read a blk_map from an open fd
+ *
+ */
+
 int blk_map_read(int fd, struct blk_map **bm) {
-    if (!bm) 
+    if (!bm || fd < 0) 
         return -EINVAL;
 
     u64 nseg = 0;
     if (read(fd, &nseg, sizeof nseg) != sizeof nseg) 
         return -errno;
-
     struct blk_map *p = blk_map_alloc(nseg);
     if (!p) 
         return -ENOMEM;

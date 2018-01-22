@@ -136,7 +136,7 @@ static int diff_cb_export(uint64_t off, size_t len, int exists, void *arg) {
     }
     if (exists) {
         /* update the segment list */
-        rc = blk_map_add(p->bm, off, len);
+        rc = blk_map_add(&(p->bm), off, len);
         if (rc) {
             p->status = -rc;
             return rc;
@@ -148,11 +148,13 @@ static int diff_cb_export(uint64_t off, size_t len, int exists, void *arg) {
             p->status = -nbyte;
             return nbyte;
         }
+        
         nbyte = write(p->fd, p->buf, len);
         if(nbyte != len) {
             p->status = errno;
             return -errno;
         }
+        
     }
     return 0;
 }
@@ -432,6 +434,8 @@ static int do_export(const char *arg, int arg_size) {
 
     rc = rbd_snap_set(rbd.image, conf.snap);
     if (rc) {
+        snpy_logger(SNPY_LOG_ERR, 
+                    "error set rbd image context to the snapshot: %d", rc);
         status = -rc;
         goto cleanup_rbd_data;
     }   /* done prepare rbd image */
@@ -440,7 +444,7 @@ static int do_export(const char *arg, int arg_size) {
     char *buf = malloc(rbd.info.obj_size);
     if (!buf) {
         snpy_logger(SNPY_LOG_ERR, "can not calloc write call-back function buffer");
-        status = ENOMEM;
+        status = errno;
         goto cleanup_rbd_data;
     }
 
@@ -466,26 +470,26 @@ static int do_export(const char *arg, int arg_size) {
     lseek(data_fd, sizeof(struct rbd_hdr), SEEK_SET);
     
     /* prepare export data block map */
-    struct blk_map *bm = blk_map_alloc(4096);
-    if (!bm) {
-        status = ENOMEM;
-        snpy_logger(SNPY_LOG_ERR, "can not alloc export data block map");
-        goto close_data_fd;
-    }
-
     /* initialize callback argument */
     struct diff_cb_export_arg export_arg =
     {   .image = rbd.image,
         .fd = data_fd,
         .buf = buf,
-        .bm = bm,
+        .bm = blk_map_alloc(4096),
         .status = 0
     };
+
+    /* check blk_mapp_alloc return */
+    if (!export_arg.bm) {
+        status = ENOMEM;
+        snpy_logger(SNPY_LOG_ERR, "can not alloc export data block map");
+        goto close_data_fd;
+    }
+
 
     rc = rbd_diff_iterate(rbd.image, NULL, 0, rbd.info.size,
                           diff_cb_export, &export_arg);
 
-     
     if (rc)  {
         status = -rc;
         snpy_logger(SNPY_LOG_ERR, "rbd_diff_iterate: %d.", rc);
@@ -502,7 +506,7 @@ static int do_export(const char *arg, int arg_size) {
     
     hdr.blk_map_offset = lseek(data_fd, 0, SEEK_CUR); /* save current offset */
 
-    rc = blk_map_write(data_fd, bm);    /* write block_map */
+    rc = blk_map_write(data_fd, export_arg.bm);    /* write block_map */
     if (rc == -1) {
         status = errno;
         goto free_blk_map;
@@ -544,7 +548,7 @@ static int do_export(const char *arg, int arg_size) {
     }
 
 free_blk_map:
-    blk_map_free(bm);
+    blk_map_free(export_arg.bm);
 close_data_fd:
     close(data_fd);
 free_buf:
@@ -598,22 +602,28 @@ static int do_import(const char *arg, int arg_size) {
     struct rbd_conf conf;
     time_t start, fin;
     int status = 0;
-    int status_msg[1024];
+    char status_msg[1024] = "";
     char str_buf[64];
     
     start = time(NULL);
     /* prepare rbd connection */
     if ((rc = rbd_conf_init(&conf, arg))) {
-        status = EINVAL;
+        status = -rc;
+        snprintf(status_msg, sizeof status_msg,
+                 "configuration invalid: %d\n", status);
         goto err_out;
     }
     if((rc = rbd_data_init(&conf, &rbd))) {
-        status = EINVAL;
+        status = -rc;
+        snprintf(status_msg, sizeof status_msg,
+                 "error initiating rbd connection: %d\n", status);
         goto err_out;
     }                                       /* RAII point */
     char job_id[32];
     if (kv_get_sval("meta/id", job_id, sizeof job_id, NULL)) {
         status = -rc;
+        snprintf(status_msg, sizeof status_msg,
+                 "error getting job id: %d\n", status);
         goto cleanup_rbd_data;
     }
     /*
@@ -625,14 +635,18 @@ static int do_import(const char *arg, int arg_size) {
     */
     if((rc = rbd_stat(rbd.image, &rbd.info, sizeof rbd.info))) {
         status = -rc;
+        snprintf(status_msg, sizeof status_msg,
+                 "error getting rbd stat: %d\n", status);
         goto cleanup_rbd_data;
     }
     
     /* allocation buffer */
     size_t buf_size = 4*(1<<20);
-    char *buf = malloc(buf_size);   
+    char *buf = malloc(buf_size);
     if (!buf) {
         status = ENOMEM;
+        snprintf(status_msg, sizeof status_msg,
+                 "error allocating import buffer: %d\n", status);
         goto cleanup_rbd_data;
     }                                       /* RAII point */
 
@@ -640,6 +654,8 @@ static int do_import(const char *arg, int arg_size) {
     int data_fd = open(data_fn, O_RDONLY, 0600);
     if (data_fd == -1) {
         status = errno;
+        snprintf(status_msg, sizeof status_msg,
+                 "error open data file: %d\n", status);
         goto free_buf;
     }                                       /* RAII point */
 
@@ -647,7 +663,8 @@ static int do_import(const char *arg, int arg_size) {
     ssize_t nread = pread(data_fd, &hdr, sizeof hdr, 0);
     if ( nread != sizeof hdr) {
         status = errno;
-        snpy_logger(SNPY_LOG_ERR, "error read rbd header: %d.", status);
+        snprintf(status_msg, sizeof status_msg,
+                 "error read rbd header: %d\n", status);
         goto close_data_fd;
     }
 
@@ -655,7 +672,9 @@ static int do_import(const char *arg, int arg_size) {
     off_t offset = lseek(data_fd, hdr.blk_map_offset, SEEK_SET);
     struct blk_map *bm;
     if ((rc = blk_map_read(data_fd, &bm))) {
-        snpy_logger(SNPY_LOG_ERR, "error read block map: %d.", rc);
+        status = -rc;
+        snprintf(status_msg, sizeof status_msg,
+                 "error read block map: %d.", status);
         goto close_data_fd;
     }                                       /* RAII point */
     /* TODO: sanity check for blk_map */
@@ -675,7 +694,9 @@ static int do_import(const char *arg, int arg_size) {
         if ((rc = snpy_rbd_write_image(rbd.image, off, len, data_fd,
                                        buf, buf_size)))
         {
-            snpy_logger(SNPY_LOG_ERR, "error write image: %d.", rc);
+            status = -rc;
+            snprintf(status_msg, sizeof status_msg,
+                     "error write image: %d.", status);
             goto free_bm;
         }
         snpy_logger(SNPY_LOG_DEBUG, "done writing segment: %d.", i);
@@ -684,7 +705,9 @@ static int do_import(const char *arg, int arg_size) {
     fin = time(NULL);
     /* update arg: add import starting and finishing time */
     if ((rc = update_import_arg(arg, start, fin))) {
-        snpy_logger(SNPY_LOG_ERR, "update_import_arg: %d.", rc);
+        status = -rc;
+        snprintf(status_msg, sizeof status_msg,
+                 "update_import_arg: %d.", status);
     }
 free_bm:
     blk_map_free(bm);
@@ -695,14 +718,12 @@ free_buf:
 cleanup_rbd_data:
     rbd_data_destroy(&rbd);
 err_out:
-    sprintf(str_buf, "%d", status);
-    kv_put_sval("meta/status", str_buf,sizeof str_buf, NULL);
-    strerror_r(status, str_buf, sizeof str_buf);
-    kv_put_sval("meta/status_msg", str_buf, sizeof str_buf, NULL);
+    kv_put_ival("meta/status", status, NULL);
+    kv_put_sval("meta/status_msg", status_msg, sizeof status_msg, NULL);
 
+    snpy_logger(SNPY_LOG_ERR, status_msg);
     return -status;
 
-    return 0;
 }
 
 static int do_diff(const char *arg, int arg_size) {
@@ -761,9 +782,9 @@ int main(void) {
     snpy_logger_open("meta/log", 0);
     
 
-    if (kv_get_sval("meta/cmd", cmd, sizeof cmd, NULL)) 
+    if ((rc = kv_get_sval("meta/cmd", cmd, sizeof cmd, NULL))) 
         goto err_out;
-    if (kv_get_sval("meta/id", id_buf, sizeof id_buf, NULL))
+    if ((rc = kv_get_sval("meta/id", id_buf, sizeof id_buf, NULL)))
         goto err_out;
     job_id = atoi(id_buf);
 
@@ -784,5 +805,8 @@ int main(void) {
     } 
 err_out:
     snpy_logger_close(0);
-    return job_id;
+    if (!rc) 
+        return job_id;
+    else 
+        return rc;
 }

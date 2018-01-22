@@ -1,6 +1,6 @@
 TARGET = libsnpy.a
 CC = gcc
-CFLAGS = -g -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function 
+CFLAGS = -Os -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function 
 .PHONY: default all clean
 
 all: $(TARGET)
