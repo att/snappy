@@ -721,7 +721,6 @@ err_out:
     kv_put_ival("meta/status", status, NULL);
     kv_put_sval("meta/status_msg", status_msg, sizeof status_msg, NULL);
 
-    snpy_logger(SNPY_LOG_ERR, status_msg);
     return -status;
 
 }
