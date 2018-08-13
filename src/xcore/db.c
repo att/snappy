@@ -58,7 +58,7 @@ MYSQL *create_mysql_conn (snappy_db_conf_t * info, MYSQL *conn) {
                             info->user,
                             info->pass,
                             info->db_name,
-                            0,
+                            info->port,
                             0,
                             CLIENT_MULTI_STATEMENTS);
 
