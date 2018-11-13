@@ -434,57 +434,6 @@ static const char *snpy_logger_pri_strlist[] =
 };
 
 
-struct snpy_logger {
-    int fd;
-    pthread_mutex_t lock;
-};
-
-static struct snpy_logger logger = 
-{   
-    .fd = 1,
-    .lock = PTHREAD_MUTEX_INITIALIZER,
-};
-
-int snpy_logger_open(const char *log_fn, int flag) {
-    int fd = open(log_fn, O_CREAT|O_WRONLY|O_TRUNC, 0600);
-    if (fd < 0) 
-        return errno;
-    logger.fd = fd;
-    return 0;
-}
-
-int snpy_logger(int priority, const char *fmt, ...) {
-
-    char buf[4096]="";
-    if (priority < SNPY_LOG_NONE || priority > SNPY_LOG_PANIC)
-        return -EINVAL;
-    
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    int len = snprintf(buf, sizeof buf,
-                       "[%lld.%lld] %s ", 
-                       (long long)tv.tv_sec, (long long)tv.tv_usec, 
-                       snpy_logger_pri_strlist[priority]);
-    va_list ap;
-
-    va_start(ap, fmt);
-
-    int rc = vsnprintf (buf+len, sizeof buf - len - 1, fmt, ap);
-    if (rc >= (sizeof buf) - len)
-        return -EMSGSIZE;
-    va_end(ap);
-
-    len += rc;
-    buf[len] = '\n'; len++; buf[len] = 0;
-
-    write(logger.fd, buf, len);
-    return 0;
-}
-
-void snpy_logger_close(int flag) {
-    close(logger.fd);
-}
-
 
 ssize_t snpy_get_free_spc(const char *path) {
     struct statvfs sv;
