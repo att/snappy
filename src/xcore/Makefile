@@ -1,9 +1,9 @@
 TARGET = xcore
 SNPY_LIB = ../libs/libsnpy.a
-LIBS = -Wl,-Bstatic -lsnpy -lmysqlclient -lssl -lcrypto -lz -Wl,-Bdynamic -lpthread -ldl -lm
+LIBS = -lsnpy -lmysqlclient -lssl -lcrypto -lz -lm -lpthread -ldl
 CC = gcc
 CFLAGS = -g -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -I/usr/include/mysql -I../libs -D_GNU_SOURCE
-LDFLAGS = -L../libs/ 
+LDFLAGS = -L../libs/ -static
 .PHONY: default all clean
 
 all: $(TARGET)
