@@ -220,10 +220,25 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     char ext_err_msg[256]="";
     
 
-    if ((status = job_get_wd(job->id, wd, sizeof wd))) 
-        return -status;
-    if ((status = job_get_plugin_exec(job, exec, sizeof exec))) 
-        return -status;
+    if ((rc = job_get_wd(job->id, wd, sizeof wd))) {
+        status = SNPY_EENVJ;
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                            SNPY_SCHED_STATE_TERM);
+
+        snprintf(ext_err_msg, sizeof ext_err_msg,
+                 "can not get working directory, code: %d.", rc);
+        goto change_state;
+    }
+
+    if ((rc = job_get_plugin_exec(job, exec, sizeof exec))) {
+        status = SNPY_EENVJ;
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                            SNPY_SCHED_STATE_TERM);
+
+        snprintf(ext_err_msg, sizeof ext_err_msg,
+                 "can not locate plugin executable, code: %d.", rc);
+        goto change_state;
+    }
 
     if((rc = get_env_init(db_conn, job))) {
         /* handling error */
@@ -232,7 +247,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
                                             SNPY_SCHED_STATE_TERM);
 
         snprintf(ext_err_msg, sizeof ext_err_msg,
-                 "env init error, code: %d.", rc);
+                 "plug env init error, code: %d.", rc);
         goto change_state;
     }
     /* spawn snapshot process */
