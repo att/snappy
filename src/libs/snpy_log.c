@@ -1,9 +1,11 @@
 #include "snpy_log.h"
+#include "snpy_util.h"
 
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/time.h>
 
 
@@ -12,32 +14,43 @@ static void* log_writer(void *arg) {
     
     while (1) {
         pthread_mutex_lock(&log->m);
+
         
         usleep(2000);
     }
     return;
 }
 
-struct snpy_log* snpy_log_open(const char *log_fn, int flag) {
+struct snpy_log* snpy_log_open(const char *log_fn, int flag, int *err) {
+    int status = 0;
     struct snpy_log * p = malloc(sizeof *p);
-    if (!p) 
-        return -ENOMEM;
-    
+    if (!p) {
+        status = ENOMEM;
+        return NULL;
+    }
     int fd = open(log_fn, O_CREAT|O_WRONLY|O_TRUNC, 0600);
     if (fd < 0) {
+
         free(p);
         return errno;
     }
     logger.fd = fd;
-
+    
+    pthread_mutex_init(&p->mutex);
     int r = pthread_create(&p->writer_thr_id, NULL, log_writer, p);
     if (r) {
         close(fd);
         free(p);
         return r;
     }
-    
-    return 0;
+
+fd_cleanup:
+
+p_cleanup:
+
+out:     
+
+    return p;
 }
 
 
