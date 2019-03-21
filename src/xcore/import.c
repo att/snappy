@@ -280,7 +280,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
         /* handling error */
         status = SNPY_EENVJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "env init error, code: %d.", rc);
 
@@ -291,7 +291,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if (pid < 0) {
        status = SNPY_ESPAWNJ;
        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                           SNPY_SCHED_STATE_DONE);
+                                           SNPY_SCHED_STATE_TERM);
 
        snprintf(ext_err_msg, sizeof ext_err_msg,
                 "fork error, code: %d.", rc);
@@ -318,7 +318,7 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_put_ival("meta/pid", pid, wd))) {
         status = SNPY_EBADJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
 
         snprintf(ext_err_msg, sizeof ext_err_msg,
                  "can not set meta/pid, code: %d.", rc);
@@ -385,13 +385,13 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     char msg[SNPY_LOG_MSG_SIZE]="";
 
     if (get_wd_path(job->id, wd_path, sizeof wd_path)) {
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         goto change_state;
     }
 
     if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
-        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         goto change_state;
     }
@@ -405,20 +405,20 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     if ((rc = kv_get_ival("meta/status", &status, wd_path)) ||
         (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         goto change_state;
     }
 
     if ((rc = db_update_str_val(db_conn, "arg2", job->id, arg_out))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
-                                            SNPY_SCHED_STATE_DONE);
+                                            SNPY_SCHED_STATE_TERM);
         status = SNPY_EDBCONN;
         goto change_state;
     }
 
     /*  complete successfully */
-    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
     status = 0;
     
 change_state:
