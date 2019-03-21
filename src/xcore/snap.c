@@ -292,16 +292,9 @@ static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
   
     /* harvesting put job status */
     new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
-    
-    char wd[PATH_MAX] = "";
-    if (!get_wd_path(job->id, wd, PATH_MAX)) {
-        /*
-        if (rmdir_recurs(wd)) {
-            syslog(LOG_ERR, "error clearing workspace for job id %d.",
-                   job->id);
-        }
-        */
-    }
+  
+    snpy_wd_cleanup(job);
+
     return  snpy_job_update_state(db_conn, job,
                                   job->id, job->argv[0],
                                   job->state, new_state,

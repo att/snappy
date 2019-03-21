@@ -435,17 +435,25 @@ change_state:
  */
 
 static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
+    int rc;
+    int status;
+    int new_state;
+    char ext_err_msg[256]="";
+    if (!job) {
+        return -EINVAL;
+    }
+
+    new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
+    status = job->result;
+    snpy_wd_cleanup(job);
+
+    return  snpy_job_update_state(db_conn, job,
+                                  job->id, job->argv[0],
+                                  job->state, new_state,
+                                  status,
+                                  "s", "ext_err_msg", ext_err_msg);
 
     return 0;
-}
-
-/* 
- *
- */
-
-static int job_check_ready(snpy_job_t *job) {
-    return 1;
-
 }
 
 
