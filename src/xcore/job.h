@@ -34,4 +34,5 @@ int snpy_job_update_state(MYSQL *db_conn, const snpy_job_t *job,
                           int status, 
                           const char *msg_val_fmt, ...) ;
 
+int snpy_wd_cleanup(snpy_job_t *job);
 #endif

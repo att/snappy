@@ -437,14 +437,7 @@ static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
     if (!job)
         return -EINVAL;
     
-    
-    char wd[PATH_MAX] = "";
-    if (!job_get_wd(job->id, wd, PATH_MAX)) {
-        if (rmdir_recurs(wd)) {
-            syslog(LOG_ERR, "error clearing workspace for job id %d.",
-                   job->id);
-        }
-    }
+    snpy_wd_cleanup(job);    
 
     new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_DONE);
 
@@ -453,15 +446,6 @@ static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
                                   job->state, new_state,
                                   job->result,
                                   "s", "ext_err_msg", ext_err_msg);
-
-}
-
-/* 
- *
- */
-
-static int job_check_ready(snpy_job_t *job) {
-    return 1;
 
 }
 
@@ -506,7 +490,6 @@ int put_proc (MYSQL *db_conn, int job_id) {
     case SNPY_SCHED_STATE_RUN:
         status = proc_run(db_conn, job);
         break; 
-
 
     case SNPY_SCHED_STATE_BLOCKED:
         status = proc_blocked(db_conn, job);

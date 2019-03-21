@@ -460,6 +460,8 @@ static int proc_term(MYSQL *db_conn, snpy_job_t *job) {
         }
 
     }
+    
+    snpy_wd_cleanup(job);
 
     return  snpy_job_update_state(db_conn, job,
                                   job->id, job->argv[0],
