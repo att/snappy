@@ -1,8 +1,10 @@
 #include "snpy_util.h"
+#include "snpy_log.h"
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 
 int main(int argc, char *argv[]) {
@@ -41,5 +43,14 @@ int main(int argc, char *argv[]) {
     int i;
     /* gcc statement expr test */
     printf("%f\n", ({double tmp; getloadavg(&tmp, 1); tmp;}));
+
+    
+    /* test snpy_log */
+    struct snpy_log log;
+    int r;
+    r = snpy_log_open(&log, "/tmp/log_test.log", 0);
+    assert(r == 0);
+    r = snpy_log(&log, SNPY_LOG_INFO, "test snpy_log.", "%d-%d", 123, 123);
+    snpy_log_close(&log);
     return 0;
 }

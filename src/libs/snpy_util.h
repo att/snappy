@@ -110,7 +110,7 @@ typedef int64_t s64;
 
 
 /*
- * C implementation of go defer semantics
+ * C implementation of defer semantics
 */
 
 #define defer_(x) do{}while(0); \
@@ -143,19 +143,6 @@ ssize_t snpy_get_free_spc(const char *path);
 ssize_t snpy_get_free_mem(void);
 ssize_t snpy_get_loadavg(void);
 
-enum {
-    SNPY_LOG_NONE,
-    SNPY_LOG_INFO,
-    SNPY_LOG_WARN,
-    SNPY_LOG_DEBUG,
-    SNPY_LOG_ERR,
-    SNPY_LOG_FATAL,
-    SNPY_LOG_PANIC
-};
-
-int snpy_logger_open(const char *log_fn, int flag);
-int snpy_logger(int priority, const char *fmt, ...);
-void snpy_logger_close(int flag);
 void *xmalloc (size_t n);
 #endif
 
