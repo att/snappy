@@ -1,9 +1,16 @@
 TARGET = xcore
 SNPY_LIB = ../libs/libsnpy.a
+<<<<<<< HEAD
 LIBS = -static-libgcc -Wl,-Bstatic -lsnpy -lmysqlclient -lssl -lcrypto -lz -Wl,-Bstatic -lpthread -ldl -lm
 CC = gcc
 CFLAGS = -Os -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -I/usr/include/mysql -I../libs -D_GNU_SOURCE
 LDFLAGS = -L../libs/ 
+=======
+LIBS = -lsnpy -lmysqlclient -lssl -lcrypto -lz -lm -lpthread -ldl
+CC = gcc
+CFLAGS = -g -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -I/usr/include/mysql -I../libs -D_GNU_SOURCE
+LDFLAGS = -L../libs/ -static
+>>>>>>> restore_to_different_src
 .PHONY: default all clean
 
 all: $(TARGET)
