@@ -122,7 +122,7 @@ static int job_get_plugin_exec(snpy_job_t *job,
                       conf_get_plugin_home(), pi->name, plugin_get_exec(pi));
     if (rc >= pi_exec_path_len) 
         return -ENAMETOOLONG;
-    if (!access(pi_exec_path, X_OK)) 
+    if (access(pi_exec_path, X_OK)) 
         return -errno;
     return 0;
 }

@@ -43,6 +43,7 @@ static const char *snpy_errmsg_tab[] = {
     [SNPY_ENOPLUG - SNPY_EBASE] = "snappy - no plugin found for the job",
     [SNPY_EINCOMPARG - SNPY_EBASE] = "snappy - incomplete argument",
     [SNPY_ELOG - SNPY_EBASE] = "snappy - log processing error",
+    [SNPY_ENOIMPL - SNPY_EBASE] = "snappy - not implemented",
     [SNPY_ERESPOOLFUL - SNPY_EBASE] = "snappy - resource pool full"
 };
 

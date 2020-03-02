@@ -123,28 +123,34 @@ static int add_job_get(MYSQL *db_conn, snpy_job_t *job) {
     sub_job.result = 0;
     sub_job.policy = BIT(0) | BIT(1) | BIT(2); /* arg0, arg2 */
     
-    
-    /* find argument used for historical job */
-    char hist_job_arg2[4096] = "";
-    int hist_job_id;
-    double js_val;
-    rc = snpy_get_json_val(job->argv[1], job->argv_size[1], ".rstr_to_job_id",
-                           &js_val, sizeof js_val);
-    if (rc) 
-        return rc;
+    /* fill out restore job's restore target */
+    char *sub_job_arg2 = NULL; 
+    /* if we see arg2 column is non-empty then use it */
+    if (strlen(job->argv[2]) != 0) {
+        sub_job_arg2 = job->argv[2]; /* use what frontend specifies */             
+    } else {
+        /* find argument used for historical job */
+        char hist_job_arg2[4096] = "";
+        int hist_job_id;
+        double js_val;
+        rc = snpy_get_json_val(job->argv[1], job->argv_size[1], ".rstr_to_job_id",
+                               &js_val, sizeof js_val);
+        if (rc)
+            return rc;
 
-    hist_job_id = js_val;
-    rc = db_get_val(db_conn, "arg2", hist_job_id, 
-                    hist_job_arg2, sizeof hist_job_arg2);
-    if (rc)
-        return rc;
-
+        hist_job_id = js_val;
+        rc = db_get_val(db_conn, "arg2", hist_job_id, 
+                        hist_job_arg2, sizeof hist_job_arg2);
+        if (rc)
+            return rc;
+        sub_job_arg2 = hist_job_arg2;
+    }
     /* update sub job */
-    if((rc = db_update_job_partial(db_conn, &sub_job)) || 
+    if((rc = db_update_job_partial(db_conn, &sub_job)) ||
        (rc = db_update_str_val(db_conn, "feid", sub_job.id, job->feid)) ||
        (rc = db_update_str_val(db_conn, "arg0", sub_job.id, "get")) ||
        (rc = db_update_str_val(db_conn, "arg1", sub_job.id, job->argv[1])) ||
-       (rc = db_update_str_val(db_conn, "arg2", sub_job.id, hist_job_arg2)))
+       (rc = db_update_str_val(db_conn, "arg2", sub_job.id, sub_job_arg2)))
         
         return rc;
     /* set snap as the first sub job */

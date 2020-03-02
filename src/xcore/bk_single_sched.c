@@ -247,7 +247,7 @@ static int add_next_sched(MYSQL *db_conn, snpy_job_t *job) {
 static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
     int status = 0;
-    int new_state;
+    int new_state = -1;
     struct bk_single_sched_conf sched_conf;
 
     if (!db_conn || !job) {
@@ -264,7 +264,7 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
         if (rc) 
             status = SNPY_ESPAWNJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, 
-                                                SNPY_SCHED_STATE_BLOCKED);
+                                            SNPY_SCHED_STATE_BLOCKED);
         goto change_state;
     }                               /* done adding job instance */
     
@@ -298,10 +298,11 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
     }
     
 change_state:
-    rc = snpy_job_update_state(db_conn, job,
-                          job->id, job->argv[0],
-                          job->state, new_state,
-                          status, NULL);
+    if (new_state != -1)    
+        rc = snpy_job_update_state(db_conn, job,
+                              job->id, job->argv[0],
+                              job->state, new_state,
+                              status, NULL);
     return rc?rc:status;
 }
 

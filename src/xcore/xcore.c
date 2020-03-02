@@ -167,7 +167,11 @@ static void sigchld_handler (int sig, siginfo_t *siginfo, void *context) {
 
 
 int main(int argc, char** argv) {
-
+        
+    if (argc == 2 && !strcmp(argv[1], "version")) {
+        printf("xcore version: %s-%s, build time: %s\n", GIT_BRANCH, GIT_HASH, COMPILE_TIME);
+        return 0;
+    }
     xcore_init();
     
     daemon(1, 1);
