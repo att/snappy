@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
         int rc;
         const char *sql_fmt_str = 
             "select MIN(id) as min_id, arg0 from snappy.jobs "
-            "where done = 0 and id > %d;";
+            "where done = 0 and id > %d group by arg0;";
         
         rc = db_exec_sql(conn, 1, NULL, 0, sql_fmt_str, cur_id);
         if (rc) {
