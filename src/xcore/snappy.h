@@ -53,6 +53,7 @@ typedef struct snpy_job {
 
 
 extern dictionary *snpy_conf;
+extern struct snpy_log xcore_log /* xcore log */;
 
 enum snpy_state_bit {
     SNPY_STATE_BIT_CREATED = 0,

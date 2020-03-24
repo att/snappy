@@ -26,5 +26,6 @@
 extern dictionary *snpy_conf;
 const char *conf_get_plugin_home(void);
 const char *conf_get_run(void);
+const char *conf_get_log(void);
 const char *conf_get_xcore_home(void);
 #endif

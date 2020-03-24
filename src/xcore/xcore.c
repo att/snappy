@@ -36,7 +36,6 @@
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
-#include <syslog.h>
 
 #include "ciniparser.h"
 
@@ -44,11 +43,12 @@
 #include "error.h"
 #include "db.h"
 #include "proc.h"
-#include "snpy_util.h"
 #include "conf.h"
 #include "plugin.h"
 
 
+#include "snpy_util.h"
+#include "snpy_log.h"
 
 static void sigchld_handler(int , siginfo_t *, void *);
 static int init_signal_handler(void);
@@ -59,6 +59,7 @@ static int snappy_load_conf(char *);
 static volatile sig_atomic_t evt_flag = 0;
 static const char *snpy_conf_file = NULL;
 
+struct snpy_log xcore_log;
 
 
 int snpy_load_conf(void) {
@@ -128,17 +129,16 @@ static int init_signal_handler(void) {
 
 static int xcore_init(void) {
     
-    openlog ("snappy", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL0);
-    syslog(LOG_INFO, "Broker starting...");
-    syslog(LOG_INFO, "Config signal handlers..");
+    printf("Broker starting...\n");
+    printf("Config signal handlers..\n");
     if (init_signal_handler()) {
         goto err_out;
     }
-    syslog(LOG_INFO, "Loading config file..");
+    printf("Loading config file..");
     if (snpy_load_conf()) {
         goto err_out;
-    } 
-    syslog(LOG_INFO, "Establish database connection..");
+    }
+    printf("Establish database connection..");
     if(db_conn_init()) {
         goto err_out;
     }
@@ -150,15 +150,26 @@ static int xcore_init(void) {
         goto err_out;
     }
     
-    char brk_status_str[4096] = "";
-    syslog(LOG_INFO, "Broker started. %s", brk_status_str);
+    const char *log_fn = conf_get_log();
+        
+    if (snpy_log_open(&xcore_log, log_fn, 0)) {
+        printf("can not open log file. \n");
+        goto err_out;
+    }
+
+    snpy_log(&xcore_log, SNPY_LOG_INFO, "Broker started. ");
     return 0;
 err_out:
-    syslog(LOG_ERR, "error starting broker, exiting.");
+    snpy_log(&xcore_log, SNPY_LOG_ERR, "error starting broker, exiting.");
     exit(1);
 }
 
+static void xcore_deinit(void) {
+    snpy_log_close(&xcore_log);
+    return;
 
+}
+ 
 static void sigchld_handler (int sig, siginfo_t *siginfo, void *context) {
     evt_flag = 1;
     return;
@@ -195,7 +206,7 @@ int main(int argc, char** argv) {
         
         rc = db_exec_sql(conn, 1, NULL, 0, sql_fmt_str, cur_id);
         if (rc) {
-            syslog(LOG_ERR, "query error: %s.", mysql_error(conn));
+            snpy_log(&xcore_log, SNPY_LOG_ERR, "query error: %s.", mysql_error(conn));
             continue;
         }
         result = mysql_store_result(conn);
@@ -209,12 +220,12 @@ int main(int argc, char** argv) {
             MYSQL_ROW row = mysql_fetch_row(result);
             unsigned long *col_lens = mysql_fetch_lengths(result);
             if (!row || !col_lens) {
-                syslog(LOG_ERR, "%s", mysql_error(conn));
+                snpy_log(&xcore_log, SNPY_LOG_ERR, "%s", mysql_error(conn));
                 goto free_result;
             }
             if (!col_lens[0]) {
                 /* we are at the end of the table */
-                syslog(LOG_DEBUG, "Reached end of the jobs table.");
+                snpy_log(&xcore_log, SNPY_LOG_DEBUG, "Reached end of the jobs table.");
                 cur_id = 0;
                 goto free_result;
             }
@@ -224,16 +235,19 @@ int main(int argc, char** argv) {
             const char *proc_name  = row[1];
             job_proc_t proc = proc_get_job_proc(proc_name);
             /* TODO :  maybe apply a filter? */
-            syslog(LOG_DEBUG, "processing job id: %d, proc_name: %s", cur_id, proc_name);
+            snpy_log(&xcore_log, 
+                     SNPY_LOG_DEBUG, "processing job id: %d, proc_name: %s", 
+                                cur_id, proc_name);
             if (proc == NULL) {
-                syslog(LOG_DEBUG, 
+                snpy_log(&xcore_log, SNPY_LOG_DEBUG, 
                        "no processor defined for job proc_name: %s.\n",
                        proc_name);
                 goto free_result;
             }
             if ((rc = proc(conn, cur_id))) {
-                syslog(LOG_ERR, "error in job id: %d, processor %s: %d, %s.\n",
-                       cur_id, proc_name, rc, snpy_strerror(-rc));
+                snpy_log(&xcore_log, SNPY_LOG_ERR, 
+                         "error in job id: %d, processor %s: %d, %s.\n",
+                        cur_id, proc_name, rc, snpy_strerror(-rc));
             }
         }
 
@@ -248,10 +262,11 @@ int main(int argc, char** argv) {
                 int status;
                 pid_t chld_pid = waitpid(-1, &status, WNOHANG);
                 if (chld_pid > 0) {
-                    syslog(LOG_DEBUG, "collected i/o job id: %d, pid: %d.\n", 
-                           WEXITSTATUS(status), chld_pid);
+                    snpy_log(&xcore_log, SNPY_LOG_DEBUG, 
+                             "collected i/o job id: %d, pid: %d.\n", 
+                             WEXITSTATUS(status), chld_pid);
                 } else if (chld_pid == 0) {
-                    syslog(LOG_DEBUG, "no zombie process.\n");
+                    snpy_log(&xcore_log, SNPY_LOG_DEBUG, "no zombie process.\n");
                     break;
                 } else if (errno == ECHILD) {
                     break;
@@ -268,8 +283,7 @@ free_result:
             sleep(1);
     }
     
-    closelog();
     mysql_close(conn);
-
+    xcore_deinit();
     return 0;
 }

@@ -70,6 +70,10 @@ const char *conf_get_run(void) {
                                  "/var/lib/snappy/run");
 }
 
+const char *conf_get_log(void) {
+    return  ciniparser_getstring(snpy_conf, "xcore:log", 
+                                 "/var/lib/snappy/run/xcore.log");
+}
 void conf_deinit(void) {
     free(snpy_conf);
 

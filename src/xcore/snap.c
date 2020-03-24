@@ -27,7 +27,6 @@
 #include <sys/fcntl.h>
 #include <sys/wait.h>
 #include <dirent.h>
-#include <syslog.h>
 #include <unistd.h>
 
 
@@ -36,7 +35,9 @@
 #include "arg.h"
 #include "log.h"
 #include "job.h"
+
 #include "snpy_util.h"
+#include "snpy_log.h"
 #include "error.h"
 #include "stringbuilder.h"
 #include "conf.h"
@@ -86,7 +87,8 @@ static int snap_env_init(snpy_job_t *job) {
         return -ERANGE;
     struct stat wd_st;
     if (!lstat(wd_path, &wd_st) && S_ISDIR(wd_st.st_mode)) {
-        syslog(LOG_DEBUG, "working directory exists, trying cleanup.\n");
+        snpy_log(&xcore_log, 
+                 SNPY_LOG_DEBUG, "working directory exists, trying cleanup.\n");
         if ((rc = rmdir_recurs(wd_path))) 
             return rc;
     }

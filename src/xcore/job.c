@@ -24,7 +24,6 @@
 #include <mysql.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <syslog.h>
 #include <limits.h>
 
 #include "error.h"
@@ -32,6 +31,7 @@
 #include "job.h"
 #include "db.h"
 #include "snpy_util.h"
+#include "snpy_log.h"
 #include "log.h"
 #include "conf.h"
 
@@ -362,14 +362,14 @@ int snpy_wd_cleanup(snpy_job_t *job) {
     if (!job->result) { /* success */
         if (rmdir_recurs(wd)) {
             status = errno;
-            syslog(LOG_ERR, "error clearing workspace for job id %d.",
+            snpy_log(&xcore_log, SNPY_LOG_ERR, "error clearing workspace for job id %d.",
                    job->id);
         }
     } else { /* if job results error, only remove data dir */
         if (strlcat(wd, "/data", sizeof wd) < sizeof wd) {
             if (rmdir_recurs(wd)) {
                 status = errno;
-                syslog(LOG_ERR, "error clearing workspace for job id %d.",
+                snpy_log(&xcore_log, SNPY_LOG_ERR, "error clearing workspace for job id %d.",
                        job->id);
             }
         }

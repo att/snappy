@@ -27,13 +27,13 @@
 #include <sys/fcntl.h>
 #include <sys/wait.h>
 #include <dirent.h>
-#include <syslog.h>
 #include <unistd.h>
 
 #include "stringbuilder.h"
 #include "ciniparser.h"
 #include "json.h"
 #include "snpy_util.h"
+#include "snpy_log.h"
 #include "snpy_data_tag.h" 
 
 
@@ -161,7 +161,7 @@ static int get_env_init(MYSQL *db_conn, snpy_job_t *job) {
         return -SNPY_ECONF;
     struct stat wd_st;
     if (!lstat(wd, &wd_st) && S_ISDIR(wd_st.st_mode)) {
-        syslog(LOG_DEBUG, "working directory exists, trying cleanup.\n");
+        snpy_log(&xcore_log, SNPY_LOG_DEBUG, "working directory exists, trying cleanup.\n");
         if ((rc = rmdir_recurs(wd))) 
             return rc;
     }
@@ -392,7 +392,8 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     }
 
     if (!kill(pid, 0)) {
-        syslog(LOG_DEBUG, "plugin process pid: %d still running.\n", pid);
+        snpy_log(&xcore_log, 
+                 SNPY_LOG_DEBUG, "plugin process pid: %d still running.\n", pid);
         return 0;
     }
     

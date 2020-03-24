@@ -27,7 +27,6 @@
 #include <sys/fcntl.h>
 #include <sys/wait.h>
 #include <dirent.h>
-#include <syslog.h>
 #include <unistd.h>
 
 
@@ -41,6 +40,7 @@
 #include "plugin.h"
 
 #include "snpy_util.h"
+#include "snpy_log.h"
 #include "stringbuilder.h"
 #include "json.h"
 
@@ -173,7 +173,7 @@ static int get_get_id(MYSQL *db_conn, int job_id) {
         MYSQL_ROW row = mysql_fetch_row(result);
         unsigned long *col_lens = mysql_fetch_lengths(result);
         if (!row || !col_lens) {
-            syslog(LOG_ERR, "%s", mysql_error(db_conn));
+            snpy_log(&xcore_log, SNPY_LOG_ERR, "%s", mysql_error(db_conn));
             goto free_result;
         }
         return atoi(row[0]); /*TODO: robust check */
@@ -181,7 +181,7 @@ static int get_get_id(MYSQL *db_conn, int job_id) {
 
 free_result:
     mysql_free_result(result);
-    syslog(LOG_ERR, "job %d: query error: %s.", 
+    snpy_log(&xcore_log, SNPY_LOG_ERR, "job %d: query error: %s.", 
            job_id, mysql_error(db_conn));
     return -mysql_errno(db_conn);
 }
@@ -202,7 +202,7 @@ static int import_env_init(MYSQL *db_conn, snpy_job_t *job) {
 
     /* wd directory check if it already exists*/
     if (!lstat(wd, &wd_st) && S_ISDIR(wd_st.st_mode)) {
-        syslog(LOG_DEBUG, "working directory exists, trying cleanup.\n");
+        snpy_log(&xcore_log, SNPY_LOG_DEBUG, "working directory exists, trying cleanup.\n");
         if ((rc = rmdir_recurs(wd))) 
             return rc;
     }
@@ -233,7 +233,7 @@ static int import_env_init(MYSQL *db_conn, snpy_job_t *job) {
     rc = rename(get_data_dir, import_data_dir);
     if (rc == -1) {
         status = errno;
-        syslog(LOG_ERR, "error moving export data directory: %d.", status);
+        snpy_log(&xcore_log, SNPY_LOG_ERR, "error moving export data directory: %d.", status);
         goto free_wd_fd;
     }
 
@@ -396,7 +396,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
         goto change_state;
     }
     if (!kill(pid, 0)) {
-        syslog(LOG_DEBUG, "plugin process pid: %d still running.\n", pid);
+        snpy_log(&xcore_log, SNPY_LOG_DEBUG, "plugin process pid: %d still running.\n", pid);
         return 0;
     }
    
