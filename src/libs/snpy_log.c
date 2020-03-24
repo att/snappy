@@ -10,6 +10,9 @@
 #include <sys/time.h>
 
 
+
+
+
 int snpy_log_open(struct snpy_log *log, const char *log_fname, int flag) {
     int fd = open(log_fname, O_CREAT|O_WRONLY|O_TRUNC, 0600);
     if (fd < 0) 
@@ -21,6 +24,12 @@ int snpy_log_open(struct snpy_log *log, const char *log_fname, int flag) {
     return 0;
 }
 
+
+void snpy_log_setfd(struct snpy_log *log, int fd) {
+    log->fd = fd;
+    pthread_mutex_init(&log->mutex, NULL);
+    return;
+}
 
 
 int snpy_log(struct snpy_log *log, int priority, const char *fmt, ...) {
