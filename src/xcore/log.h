@@ -18,8 +18,8 @@
  *  Author: Pingkai Liu (pingkai@research.att.com)
  */
 
-#ifndef SNPY_LOG_H
-#define SNPY_LOG_H
+#ifndef SNPY_JOB_LOG_H
+#define SNPY_JOB_LOG_H
 
 #include <time.h>
 #include <stdarg.h>

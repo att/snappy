@@ -26,7 +26,6 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
-#include <syslog.h>
 
 #include <limits.h>
 
@@ -37,6 +36,7 @@
 
 #include "json.h"
 #include "snpy_util.h"
+#include "snpy_log.h"
 
 
 
@@ -82,7 +82,7 @@ int plugin_tbl_init(void) {
         plugin_tbl[i].name = name;
         plugin_tbl[i].id = id;
         i++;
-        syslog(LOG_INFO, "load plugin: %d, %s.", id, name);
+        snpy_log(&xcore_log, SNPY_LOG_INFO, "load plugin: %d, %s.", id, name);
     }
     
     closedir(dir);

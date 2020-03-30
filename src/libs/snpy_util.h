@@ -108,6 +108,20 @@ typedef int64_t s64;
     }                                                   \
 } while (0)
 
+
+/*
+ * C implementation of defer semantics
+*/
+
+#define defer_(x) do{}while(0); \
+        auto void _dtor1_##x(); \
+        auto void _dtor2_##x(); \
+        int __attribute__((cleanup(_dtor2_##x))) _dtorV_##x=69; \
+        void _dtor2_##x(){if(_dtorV_##x==42)return _dtor1_##x();};_dtorV_##x=42; \
+        void _dtor1_##x()
+#define defer__(x) defer_(x)
+#define defer defer__(__COUNTER__)
+
 int kv_get_sval(const char *key, char *val, int val_size, const char *wd);
 int kv_get_ival(const char *key, int *val, const char *wd);
 int kv_put_sval(const char *key, const char *val, int val_size, const char *wd);
@@ -129,19 +143,6 @@ ssize_t snpy_get_free_spc(const char *path);
 ssize_t snpy_get_free_mem(void);
 ssize_t snpy_get_loadavg(void);
 
-enum {
-    SNPY_LOG_NONE,
-    SNPY_LOG_INFO,
-    SNPY_LOG_WARN,
-    SNPY_LOG_DEBUG,
-    SNPY_LOG_ERR,
-    SNPY_LOG_FATAL,
-    SNPY_LOG_PANIC
-};
-
-int snpy_logger_open(const char *log_fn, int flag);
-int snpy_logger(int priority, const char *fmt, ...);
-void snpy_logger_close(int flag);
 void *xmalloc (size_t n);
 #endif
 

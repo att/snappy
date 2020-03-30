@@ -22,7 +22,6 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
-#include <syslog.h>
 
 
 #include "snappy.h"
@@ -30,7 +29,9 @@
 #include "arg.h"
 #include "log.h"
 #include "job.h"
+
 #include "snpy_util.h"
+#include "snpy_log.h"
 
 #include "bk_single_full.h"
 
@@ -312,13 +313,7 @@ int bk_single_full_proc (MYSQL *db_conn, int job_id) {
     if (rc != 0)  return 1;
     
     db_lock_job_tree(db_conn, job_id);
-    /*
-    {      
-        mysql_rollback(db_conn);
-        syslog(LOG_DEBUG, "job is being handled by another broker, skipped.");
-        return 0;
-    }
-    */
+
     rc = snpy_job_get(db_conn, &job, job_id);
     if (rc) return 1;
     int sched_state = SNPY_GET_SCHED_STATE(job->state);
