@@ -190,8 +190,8 @@ int main(int argc, char** argv) {
     while (1) {
         int rc;
         const char *sql_fmt_str = 
-            "select MIN(id) as min_id, arg0 from snappy.jobs "
-            "where done = 0 and id > %d group by arg0;";
+            "select MIN(id) from snappy.jobs "
+            "where done = 0 and id > %d;";
         
         rc = db_exec_sql(conn, 1, NULL, 0, sql_fmt_str, cur_id);
         if (rc) {
@@ -203,13 +203,14 @@ int main(int argc, char** argv) {
             continue;
         }
         if ( mysql_num_rows(result) != 1)  {
+            syslog(LOG_ERR, "snappy job db table issue: non-unqiue id.");
             goto free_result;
         } else {
             int id;
             MYSQL_ROW row = mysql_fetch_row(result);
             unsigned long *col_lens = mysql_fetch_lengths(result);
             if (!row || !col_lens) {
-                syslog(LOG_ERR, "%s", mysql_error(conn));
+                syslog(LOG_ERR, "dbconn: %s", mysql_error(conn));
                 goto free_result;
             }
             if (!col_lens[0]) {
@@ -221,7 +222,14 @@ int main(int argc, char** argv) {
             
             
             cur_id = atoi(row[0]);
-            const char *proc_name  = row[1];
+            /* get job processor name */
+            char proc_name[64]= "";
+            rc = db_get_val(conn, "arg0", cur_id, proc_name, sizeof proc_name);
+            if (rc) {
+                syslog(LOG_ERR, "can not get processor name:  %d", rc);
+                goto free_result;
+            }
+
             job_proc_t proc = proc_get_job_proc(proc_name);
             /* TODO :  maybe apply a filter? */
             syslog(LOG_DEBUG, "processing job id: %d, proc_name: %s", cur_id, proc_name);
@@ -234,6 +242,7 @@ int main(int argc, char** argv) {
             if ((rc = proc(conn, cur_id))) {
                 syslog(LOG_ERR, "error in job id: %d, processor %s: %d, %s.\n",
                        cur_id, proc_name, rc, snpy_strerror(-rc));
+                goto free_result;
             }
         }
 
