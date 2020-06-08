@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
             continue;
         }
         if ( mysql_num_rows(result) != 1)  {
-            syslog(LOG_ERR, "snappy job db table issue: non-unqiue id.");
+            snpy_log(&xcore_log, SNPY_LOG_ERR, "snappy job db table issue: non-unqiue id.");
             goto free_result;
         } else {
             int id;
