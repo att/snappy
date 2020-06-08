@@ -9,7 +9,7 @@ struct snpy_log {
 };
 
 int snpy_log_open(struct snpy_log *log, const char* fn, int flag);
-int snpy_log_setfd(struct snpy_log *log, int fd);
+void snpy_log_setfd(struct snpy_log *log, int fd);
     
 int snpy_log(struct snpy_log *log, int priority, const char *fmt, ...);
 void snpy_log_close(struct snpy_log *log);
