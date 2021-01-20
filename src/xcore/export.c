@@ -290,25 +290,6 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
     return 0;
 }
 
-/* 
- * check_snap_run_state() - sanity check for running snapshot job status
- *
- */
-#if 0
-static int check_snap_run_state(MYSQL *db_conn, snpy_job_t *job) {
-    int wrkdir_fd = open(plugin_env.wd, O_RDONLY);
-    if (wrkdir_fd == -1)  
-        return -errno;
-
-    if (faccessat(wrkdir_fd, "meta/pid", F_OK, 0) == -1) {
-        close(wrkdir_fd);
-        return -errno;
-    }
-    return 0;
-}
-#endif
-
-
 
 static int add_job_put(MYSQL *db_conn, snpy_job_t *job) {
     int rc;

@@ -41,8 +41,10 @@
 
 
 #define PLUG_NAME_LEN 64
+#define MAX_PLUGIN_NUM 1024
 
-static struct plugin plugin_tbl[64];
+static struct plugin plugin_tbl[MAX_PLUGIN_NUM];
+static int plugin_num = 0;
 
 int plugin_tbl_init(void) {
     int rc = 0;
@@ -57,7 +59,7 @@ int plugin_tbl_init(void) {
         return -errno;
     }
     int i;
-    for (i = 0; i < ARRAY_SIZE(plugin_tbl); ) {
+    for (i = 0; i < MAX_PLUGIN_NUM; ) {
         struct dirent *ent = readdir(dir);
         if (!ent) 
             break;
@@ -84,7 +86,7 @@ int plugin_tbl_init(void) {
         i++;
         snpy_log(&xcore_log, SNPY_LOG_INFO, "load plugin: %d, %s.", id, name);
     }
-    
+    plugin_num = i;
     closedir(dir);
     return 0;
 }
@@ -102,7 +104,7 @@ struct plugin *plugin_srch_by_name(const char *name) {
     int i;
     if (!name)
         return NULL;
-    for (i = 0; i < ARRAY_SIZE(plugin_tbl); i ++) {
+    for (i = 0; i < plugin_num; i ++) {
         if (!strncmp(name, plugin_tbl[i].name, PLUG_NAME_LEN)) 
             return &plugin_tbl[i];
     }

@@ -41,14 +41,9 @@
 #include "error.h"
 #include "stringbuilder.h"
 #include "conf.h"
+#include "plugin.h"
 
 #include "snap.h"
-
-
-struct plugin_env {
-    char wd[PATH_MAX];
-    char entry_pt[PATH_MAX];
-};
 
 
 static int proc_created(MYSQL *db_conn, snpy_job_t *job);
@@ -58,22 +53,39 @@ static int proc_term(MYSQL *db_conn, snpy_job_t *job);
 
 static int snap_env_init(snpy_job_t *job) ;
 
-static int plugin_env_init(struct plugin_env *env, snpy_job_t *job);
+static int job_get_wd(int job_id, char *wd, int wd_size);
 
-static int get_wd_path(int job_id, char *wrkdir_path, int wrkdir_path_size);
 
-int plugin_env_init(struct plugin_env *env, snpy_job_t *job) {
-    int rc;
-    if (!env || !job)
-        return -EINVAL;
-    snprintf (env->wd, sizeof env->wd, "/%s/%d/",
-              conf_get_run(), job->id);
-    rc = strlcpy(env->entry_pt,
-                 "/var/lib/snappy/plugins/rbd/snpy_rbd",
-                 sizeof env->entry_pt);
+static int job_get_wd(int job_id, char *wd, int wd_size) {
     
+    int rc = snprintf (wd, wd_size, "/%s/%d/",
+                       conf_get_run(), job_id);
+    if (rc == wd_size) 
+        return -ENAMETOOLONG;
+    else 
+        return 0;
+}
+
+
+static int job_get_plugin_exec(snpy_job_t *job, 
+                                char *pi_exec_path, int pi_exec_path_len) {
+    int rc =0;
+    if (!job)
+        return -EINVAL;
+    struct plugin *pi;
+    rc = plugin_choose(job->argv[2], &pi, NULL);
+    if (rc) 
+        return rc;
+    rc = snprintf(pi_exec_path, pi_exec_path_len, "%s/%s/%s",
+                  conf_get_plugin_home(), pi->name, plugin_get_exec(pi));
+    if (rc >= pi_exec_path_len) 
+        return -ENAMETOOLONG;
+    if (access(pi_exec_path, X_OK)) 
+        return -errno;
     return 0;
 }
+
+
 
 
 static int snap_env_init(snpy_job_t *job) {
@@ -126,7 +138,7 @@ static int snap_env_init(snpy_job_t *job) {
 
 free_wd_fd:
     close(wd_fd);
-    return -status;;
+    return -status;
 }
 
 
@@ -135,15 +147,26 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     int status;
     int new_state;
     char msg[SNPY_LOG_MSG_SIZE]="";
-    char wd_path[PATH_MAX]="";
-    
-    struct  plugin_env pe;
+    char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
+    char wd[PATH_MAX]="";
+    char exec[PATH_MAX]="";
 
-    
-    if((rc = plugin_env_init(&pe, job)) || (rc = snap_env_init(job))) {
-        /* handling error */
+    if ((rc = job_get_wd(job->id, wd, sizeof wd))) {
+        status = -rc; 
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                            SNPY_SCHED_STATE_TERM);
+        goto change_state;
+    }
+    if ((rc = job_get_plugin_exec(job, exec, sizeof exec))) {
+        status = -rc;
+        new_state = SNPY_UPDATE_SCHED_STATE(job->state,
+                                            SNPY_SCHED_STATE_TERM);
+
+        goto change_state;
+    }
+
+    if((rc = snap_env_init(job))) {
         status = SNPY_EENVJ;
-        
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_TERM);
         goto change_state;
@@ -159,18 +182,18 @@ static int proc_created(MYSQL *db_conn, snpy_job_t *job) {
     }
 
     if (pid == 0) { 
-        if (chdir(pe.wd)) { /* switch to working directory */
+        if (chdir(wd)) { /* switch to working directory */
             status = errno;
             exit(-status);
         }
-        if (execl(pe.entry_pt, pe.entry_pt, (char*)NULL) == -1) {
+        if (execl(exec, exec, (char*)NULL) == -1) {
             status = errno;
             exit(-status);
         }
     }
     
-    if (get_wd_path(job->id, wd_path, sizeof wd_path) || 
-        (rc = kv_put_ival("meta/pid", pid, wd_path))) {
+    if (job_get_wd(job->id, wd, sizeof wd) || 
+        (rc = kv_put_ival("meta/pid", pid, wd))) {
         status = SNPY_EBADJ;
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_TERM);
@@ -197,16 +220,6 @@ static int proc_ready(MYSQL *db_conn, snpy_job_t *job) {
     return 0;
 }
 
-static int get_wd_path(int job_id, char *wd_path, int wd_path_size) {
-    
-    int rc = snprintf (wd_path, wd_path_size, "/%s/%d/",
-                       conf_get_run(), job_id);
-    if (rc == wd_path_size) 
-        return -ENAMETOOLONG;
-    else 
-        return 0;
-}
-
 static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     int rc;
     char buf[64];
@@ -215,16 +228,16 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     int new_state;
     log_rec_t log_rec;
 
-    char wd_path[PATH_MAX]="";
+    char wd[PATH_MAX]="";
     char ext_err_msg[SNPY_LOG_MSG_SIZE]="";
 
-    if (get_wd_path(job->id, wd_path, sizeof wd_path)) {
+    if (job_get_wd(job->id, wd, sizeof wd)) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
         goto change_state;
     }
 
-    if ((rc = kv_get_ival("meta/pid", &pid, wd_path))) {
+    if ((rc = kv_get_ival("meta/pid", &pid, wd))) {
                
         new_state = SNPY_UPDATE_SCHED_STATE(job->state, SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
@@ -239,8 +252,8 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
     
     char arg_out[4096];
     int plugin_job_status;
-    if ((rc = kv_get_ival("meta/status", &plugin_job_status, wd_path)) ||
-        (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd_path))) {
+    if ((rc = kv_get_ival("meta/status", &plugin_job_status, wd)) ||
+        (rc = kv_get_sval("meta/arg.out", arg_out, sizeof arg_out, wd))) {
         new_state = SNPY_UPDATE_SCHED_STATE(job->state,
                                             SNPY_SCHED_STATE_TERM);
         status = SNPY_EBADJ;
@@ -255,7 +268,7 @@ static int proc_run(MYSQL *db_conn, snpy_job_t *job) {
                                             SNPY_SCHED_STATE_TERM);
         status = SNPY_EPLUG;
         if (kv_get_sval("meta/status_msg", 
-                         ext_err_msg, sizeof ext_err_msg, wd_path)) 
+                         ext_err_msg, sizeof ext_err_msg, wd)) 
             ext_err_msg[0] = 0;
     }
 
