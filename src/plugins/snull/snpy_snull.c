@@ -35,10 +35,8 @@
 
 
 
-
-#include "json.h"
 #include "snpy_util.h"
-#include "snpy_blk_map.h"
+#include "json.h"
 
 
 /* define error  type */
@@ -50,6 +48,8 @@ const char* snpy_snull_strerror(int errnum) {
     return "unknown error";
 
 }
+
+FILE *log_file;
 
 
 static int do_snap(const char *arg, int arg_size);
@@ -190,7 +190,7 @@ static int do_export(const char *arg, int arg_size) {
     
     fin = time(NULL);
     if ((rc = update_export_arg(arg, start, fin))) {
-        snpy_logger(SNPY_LOG_ERR, "update_export_arg: %d.", rc);
+        fprintf(log_file, "update_export_arg: %d.", rc);
     }
 
     kv_put_ival("meta/status", status, NULL);
@@ -211,7 +211,7 @@ static int do_import(const char *arg, int arg_size) {
     kv_put_ival("meta/status", status, NULL);
     kv_put_sval("meta/status_msg", status_msg, sizeof status_msg, NULL);
 
-    snpy_logger(SNPY_LOG_ERR, status_msg);
+    fprintf(log_file, status_msg);
     return -status;
 
 }
@@ -230,11 +230,15 @@ int main(void) {
     char cmd[32];
     char arg[4096];
     char id_buf[64];
-    int job_id;
-
+    int job_id = -1;
     /* open log */
-    snpy_logger_open("meta/log", 0);
-    
+    log_file = fopen("meta/log", "w");
+    if (!log_file) {
+        rc = -errno;
+        fprintf(stderr, "can not open log to write.\n"); 
+        goto err_out;
+    }
+    defer { fclose(log_file); }
 
     if ((rc = kv_get_sval("meta/cmd", cmd, sizeof cmd, NULL))) 
         goto err_out;
@@ -258,7 +262,6 @@ int main(void) {
     } 
 
 err_out:
-    snpy_logger_close(0);
     if (!rc) 
         return job_id;
     else 
