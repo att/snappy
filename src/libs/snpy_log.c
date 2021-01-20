@@ -12,6 +12,15 @@
 
 
 
+struct snpy_log *snpy_log_create(void) {
+    struct snpy_log *p = malloc(sizeof *p);
+    if (p) {
+        p->fd = STDERR_FILENO;      /* default to stderr */
+        pthread_mutex_init(&p->mutex, NULL);
+    }
+    return p;
+
+}
 
 int snpy_log_open(struct snpy_log *log, const char *log_fname, int flag) {
     int fd = open(log_fname, O_CREAT|O_WRONLY|O_TRUNC, 0600);
@@ -63,6 +72,17 @@ int snpy_log(struct snpy_log *log, int priority, const char *fmt, ...) {
 
 void snpy_log_close(struct snpy_log *log) {
     close(log->fd);
+    pthread_mutex_destroy(&log->mutex);
+}
+
+void snpy_log_destroy(struct snpy_log *log) {
+    if (log) {
+        close(log->fd);
+        pthread_mutex_destroy(&log->mutex);
+    }
+
+    free(log);
+    
 }
 
 

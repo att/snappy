@@ -8,11 +8,13 @@ struct snpy_log {
     pthread_mutex_t mutex;
 };
 
+struct snpy_log *snpy_log_create(void);
 int snpy_log_open(struct snpy_log *log, const char* fn, int flag);
 void snpy_log_setfd(struct snpy_log *log, int fd);
     
 int snpy_log(struct snpy_log *log, int priority, const char *fmt, ...);
 void snpy_log_close(struct snpy_log *log);
+void snpy_log_destroy(struct snpy_log *log);
 
 static const char *snpy_logger_pri_strlist[] = 
 {
