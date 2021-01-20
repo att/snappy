@@ -3,12 +3,13 @@ COMPILE_TIME := "$(shell date -u +'%Y-%m-%d_%H:%M:%S_UTC')"
 GIT_BRANCH := "$(shell git branch | grep "^\*" | sed 's/^..//')"
 VERSION_FLAGS=-DGIT_HASH="\"$(GIT_HASH)\"" -DCOMPILE_TIME="\"$(COMPILE_TIME)\"" -DGIT_BRANCH="\"$(GIT_BRANCH)\""
 
-TARGET = xcore
+TARGET = xcore xcore.static
 SNPY_LIB = ../libs/libsnpy.a
-LIBS = -lsnpy -lmysqlclient -lssl -lcrypto -lz -lm -lpthread -ldl
+LIBS = -lsnpy -lmysqlclient -lssl-1.0 -lcrypto-1.0 -lz -lm -lpthread -ldl
 CC = gcc
 CFLAGS = $(VERSION_FLAGS) -Os -g -Wall -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-function -I/usr/include/mysql -I../libs -D_GNU_SOURCE
-LDFLAGS = -L../libs/ -static
+STATC_LDFLAGS = -L../libs/ -static
+LDFLAGS = -L../libs/ 
 .PHONY: default all clean
 
 all: $(TARGET)
@@ -22,8 +23,10 @@ HEADERS = $(wildcard *.h)
 
 .PRECIOUS: $(TARGET) $(OBJECTS)
 
-$(TARGET): $(OBJECTS) $(SNPY_LIB)
+xcore: $(OBJECTS) $(SNPY_LIB)
 	$(CC) $(LDFLAGS) $(OBJECTS)  -Wall $(LIBS) -o $@
+xcore.static: $(OBJECTS) $(SNPY_LIB)
+	$(CC) $(STATC_LDFLAGS) $(OBJECTS)  -Wall $(LIBS) -o $@
 
 install: 
 	install -m 0755 $(TARGET) /var/lib/snappy/bin/
